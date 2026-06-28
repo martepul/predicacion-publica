@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📋 Programa de Predicación Pública</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <div class="header-flex">
+        <h1 class="header-title">📋 cronograma de Predicación Pública</h1>
+        <div id="header-actions">
+            <button id="btnToggleTheme">🌓 Modo</button>
+            <button id="btnBloquearTodo">🔒 Bloquear Todo</button>
+            <button id="toggleSidebar">
+                <span id="sidebarIcon" class="icon">⬅️</span>
+                <span id="sidebarText" class="text">Ocultar Panel</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <div id="sidebarOverlay" class="sidebar-overlay"></div>
+        <div class="content-area">
+            <div class="table-container">
+                <table id="tablaAsignaciones">
+                    <thead>
+                        <tr id="headerRow">
+                            <th>DÍA</th>
+                            <th>HORA</th>
+                            <th>LUGAR</th>
+                            <th>PARTICIPANTES</th>
+                            <th class="th-actions">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpoTabla"></tbody>
+                </table>
+            </div>
+            <button id="btnExportPDF" class="btn-export">📄 DESCARGAR PDF</button>
+        </div>
+
+        <aside class="sidebar">
+            <div class="control-group">
+                <button class="btn-export">📄 DESCARGAR PDF</button>
+                <small style="color: #666; font-size: 0.8em;">*Para que el pdf refleje el mes deseado asegurese de
+                    seleccionar un rango de fechas dentro del mes.</small>
+                <div class="con_f">
+                    <h3 class="t_s">Rango de fechas</h3>
+                    <label class="sidebar-label">Fecha Inicio:</label>
+                    <input type="date" id="fechaInicio">
+                    <label class="sidebar-label">Fecha Final:</label>
+                    <input type="date" id="fechaFinal">
+
+                    <label class="sidebar-label">Predefinido:</label>
+                    <select id="cantidadFechas">
+                        <option value="custom">Personalizado...</option>
+                        <option value="7">1 Semana</option>
+                        <option value="15">15 Días</option>
+                        <option value="30" selected>1 Mes (30 días)</option>
+                    </select>
+
+                    <label class="sidebar-label-block" style="margin-top:10px; display:block;">Inicio de
+                        Semana:</label>
+                    <select id="inicioSemanaSelect">
+                        <option value="1" selected>Lunes</option>
+                        <option value="0">Domingo</option>
+                    </select>
+                </div>
+
+                <div class="con_cl" style="display:none;">
+                    <h3 class="t_s">Columnas</h3>
+                    <div class="columns-grid">
+                    </div>
+                </div>
+
+                <div class="cn_ds">
+                    <h3 class="t_s">Días y Turnos</h3>
+                    <div class="dt" id="selectorDiasContainer">
+                    </div>
+                </div>
+            </div>
+
+            <div id="gestionContainer">
+                <div class="tabs">
+                    <button class="tab-button active" data-tab="participantes">Participantes</button>
+                    <button class="tab-button" data-tab="lugares">Lugares</button>
+                    <button class="tab-button" data-tab="grupos">Grupos</button>
+                </div>
+
+                <div id="participantesPane" class="tab-pane active">
+                    <h3>Gestionar Participantes</h3>
+                    <input type="text" id="nuevoParticipanteNombre" placeholder="Nombre...">
+                    <button id="btnAgregarParticipante">+ Añadir</button>
+
+                    <div class="import-zone">
+                        <label>Importar lista:</label>
+                        <input type="file" id="fileParticipantes" accept=".txt">
+                    </div>
+
+                    <ul id="listaParticipantes" class="participant-list"></ul>
+                </div>
+
+                <div id="lugaresPane" class="tab-pane">
+                    <h3>Gestionar Lugares</h3>
+                    <input type="text" id="nuevoLugarNombre" placeholder="Lugar...">
+                    <button id="btnAgregarLugar">+ Añadir</button>
+
+                    <div class="import-zone">
+                        <label>Importar lista:</label>
+                        <input type="file" id="fileLugares" accept=".txt">
+                    </div>
+
+                    <ul id="listaLugares" class="participant-list"></ul>
+                </div>
+
+                <div id="gruposPane" class="tab-pane">
+                    <h3>Gestionar Grupos</h3>
+                    <small style="display:block; margin-bottom:5px; color:#666;">Acepta rangos (ej: 1-10) or nombres
+                        simples.</small>
+                    <input type="text" id="nuevoGrupoNombre" placeholder="Ej: Grupo 1 o 1-50...">
+                    <button id="btnAgregarGrupo">+ Añadir</button>
+                    <div style="margin-top:5px; display:flex; gap:5px;">
+                        <button id="btnLimpiarGrupos" style="font-size:0.8em; width:auto; padding:5px;">Borrar
+                            Todos</button>
+                    </div>
+                    <ul id="listaGrupos" class="participant-list"></ul>
+                </div>
+            </div>
+        </aside>
+    </div>
+    <script src="js/script.js"></script>
+
+</body>
+
+</html>
