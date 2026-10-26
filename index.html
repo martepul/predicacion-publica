@@ -26,9 +26,43 @@
         </div>
     </div>
 
+    <section class="date-range-menu" aria-labelledby="dateRangeTitle">
+        <h2 id="dateRangeTitle">Rango de fechas</h2>
+        <div class="date-range-controls">
+            <label for="fechaInicio">
+                Fecha Inicio
+                <input type="date" id="fechaInicio">
+            </label>
+            <label for="fechaFinal">
+                Fecha Final
+                <input type="date" id="fechaFinal">
+            </label>
+            <label for="cantidadFechas">
+                Predefinido
+                <select id="cantidadFechas">
+                    <option value="custom">Personalizado...</option>
+                    <option value="7">1 Semana</option>
+                    <option value="15">15 Días</option>
+                    <option value="30" selected>1 Mes (30 días)</option>
+                </select>
+            </label>
+            <label for="inicioSemanaSelect">
+                Inicio de Semana
+                <select id="inicioSemanaSelect">
+                    <option value="1" selected>Lunes</option>
+                    <option value="0">Domingo</option>
+                </select>
+            </label>
+        </div>
+    </section>
+
     <div class="main-layout">
         <div id="sidebarOverlay" class="sidebar-overlay"></div>
         <div class="content-area">
+            <div class="table-actions">
+                <button id="btnGenerateProgram" class="btn-export">✨ GENERAR PROGRAMA AUTOMÁTICO</button>
+                <button id="btnLimpiarAsignaciones" class="btn-clear-table" type="button">🧹 LIMPIAR TODA LA TABLA</button>
+            </div>
             <div class="table-container">
                 <table id="tablaAsignaciones">
                     <thead>
@@ -46,44 +80,42 @@
             <button id="btnExportPDF" class="btn-export">📄 DESCARGAR PDF</button>
         </div>
 
+        <aside id="detailsSidebar" class="details-sidebar">
+            <h2>Información de salidas</h2>
+            <div class="details-tabs" role="tablist" aria-label="Categorías de información">
+                <button id="detailsParticipantsTab" class="details-tab active" type="button" role="tab"
+                    aria-controls="detailsParticipantsPane" aria-selected="true">Participantes</button>
+                <button id="detailsPlacesTab" class="details-tab" type="button" role="tab"
+                    aria-controls="detailsPlacesPane" aria-selected="false">Lugares de salida</button>
+            </div>
+            <section id="detailsParticipantsPane" class="details-group details-pane" role="tabpanel"
+                aria-labelledby="detailsParticipantsTab">
+                <label for="detailsParticipants">Participante:</label>
+                <select id="detailsParticipants"></select>
+                <div id="detailsParticipantInfo"></div>
+            </section>
+            <section id="detailsPlacesPane" class="details-group details-pane" role="tabpanel"
+                aria-labelledby="detailsPlacesTab" hidden>
+                <label for="detailsPlaces">Lugar:</label>
+                <select id="detailsPlaces"></select>
+                <div id="detailsPlaceInfo"></div>
+            </section>
+        </aside>
+
         <aside class="sidebar">
             <div class="control-group">
                 <button class="btn-export">📄 DESCARGAR PDF</button>
                 <small style="color: #666; font-size: 0.8em;">*Para que el pdf refleje el mes deseado asegurese de
                     seleccionar un rango de fechas dentro del mes.</small>
-                <div class="con_f">
-                    <h3 class="t_s">Rango de fechas</h3>
-                    <label class="sidebar-label">Fecha Inicio:</label>
-                    <input type="date" id="fechaInicio">
-                    <label class="sidebar-label">Fecha Final:</label>
-                    <input type="date" id="fechaFinal">
-
-                    <label class="sidebar-label">Predefinido:</label>
-                    <select id="cantidadFechas">
-                        <option value="custom">Personalizado...</option>
-                        <option value="7">1 Semana</option>
-                        <option value="15">15 Días</option>
-                        <option value="30" selected>1 Mes (30 días)</option>
-                    </select>
-
-                    <label class="sidebar-label-block" style="margin-top:10px; display:block;">Inicio de
-                        Semana:</label>
-                    <select id="inicioSemanaSelect">
-                        <option value="1" selected>Lunes</option>
-                        <option value="0">Domingo</option>
-                    </select>
-                </div>
-
                 <div class="con_cl" style="display:none;">
                     <h3 class="t_s">Columnas</h3>
                     <div class="columns-grid">
                     </div>
                 </div>
 
-                <div class="cn_ds">
-                    <h3 class="t_s">Días y Turnos</h3>
-                    <div class="dt" id="selectorDiasContainer">
-                    </div>
+                <div class="cn_hs">
+                    <h3 class="t_s">Horarios globales</h3>
+                    <div id="horariosGlobalesContainer"></div>
                 </div>
             </div>
 
