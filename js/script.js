@@ -6,6 +6,10 @@
         GRUPOS: 'grupos_v1',
         MANUALES: 'manuales_v9',
         CONFIG_DIAS: 'config_dias_v3',
+        LIMITE_HORARIOS_DIA: 'limite_horarios_dia_v1',
+        CONFIG_FECHAS: 'config_fechas_v1',
+        DISPONIBILIDAD_LUGARES: 'disponibilidad_lugares_v1',
+        PARTICIPANTES_POR_LUGAR: 'participantes_por_lugar_v1',
         THEME: 'theme_v1',
         FECHA_INICIO: 'fecha_inicio_v1',
         CANTIDAD_FECHAS: 'cantidad_fechas_v1',
@@ -24,6 +28,13 @@
             0: [], 1: ['7:00-9:00 am'], 2: ['7:00-9:00 am'], 3: ['7:00-9:00 am'],
             4: ['7:00-9:00 am'], 5: ['7:00-9:00 am'], 6: ['7:00-9:00 am']
         },
+        limiteHorariosDia: 2,
+        configFechas: {},
+        disponibilidadLugares: {},
+        participantesPorLugar: {},
+        detailSelectedParticipant: '',
+        detailSelectedLugar: '',
+        detailActiveSection: 'participants',
         uiState: {}
     };
 
@@ -33,6 +44,7 @@
         fFinal: document.getElementById('fechaFinal'),
         cantidadFechas: document.getElementById('cantidadFechas'),
         tablaBody: document.getElementById('cuerpoTabla'),
+        btnExportPDF: document.getElementById('btnExportPDF'),
         listaParticipantes: document.getElementById('listaParticipantes'),
         listaLugares: document.getElementById('listaLugares'),
         listaGrupos: document.getElementById('listaGrupos'),
@@ -47,12 +59,22 @@
         fileLugares: document.getElementById('fileLugares'),
         fileGrupos: document.getElementById('fileGrupos'),
         btnToggleTheme: document.getElementById('btnToggleTheme'),
+        btnGenerateProgram: document.getElementById('btnGenerateProgram'),
         btnBloquearTodo: document.getElementById('btnBloquearTodo'),
         btnAsignarParticipantes: document.getElementById('btnAsignarParticipantes'),
         btnLimpiarAsignaciones: document.getElementById('btnLimpiarAsignaciones'),
         toggleSidebar: document.getElementById('toggleSidebar'),
         layout: document.querySelector('.main-layout'),
-        diasContainer: document.getElementById('selectorDiasContainer')
+        detailsSidebar: document.getElementById('detailsSidebar'),
+        detailsParticipantsTab: document.getElementById('detailsParticipantsTab'),
+        detailsPlacesTab: document.getElementById('detailsPlacesTab'),
+        detailsParticipantsPane: document.getElementById('detailsParticipantsPane'),
+        detailsPlacesPane: document.getElementById('detailsPlacesPane'),
+        detailsParticipants: document.getElementById('detailsParticipants'),
+        detailsParticipantInfo: document.getElementById('detailsParticipantInfo'),
+        detailsPlaces: document.getElementById('detailsPlaces'),
+        detailsPlaceInfo: document.getElementById('detailsPlaceInfo'),
+        horariosGlobalesContainer: document.getElementById('horariosGlobalesContainer')
     };
 
     // --- CREACIÓN Y SANITIZACIÓN DE DISPONIBILIDAD ---
@@ -88,6 +110,10 @@
         localStorage.setItem(KEYS.GRUPOS, JSON.stringify(state.grupos));
         localStorage.setItem(KEYS.MANUALES, JSON.stringify(state.manuales));
         localStorage.setItem(KEYS.CONFIG_DIAS, JSON.stringify(state.configDias));
+        localStorage.setItem(KEYS.LIMITE_HORARIOS_DIA, String(state.limiteHorariosDia));
+        localStorage.setItem(KEYS.CONFIG_FECHAS, JSON.stringify(state.configFechas));
+        localStorage.setItem(KEYS.DISPONIBILIDAD_LUGARES, JSON.stringify(state.disponibilidadLugares));
+        localStorage.setItem(KEYS.PARTICIPANTES_POR_LUGAR, JSON.stringify(state.participantesPorLugar));
     }
 
     // --- CARGAR DE STORAGE ---
@@ -96,11 +122,34 @@
             const rawPart = JSON.parse(localStorage.getItem(KEYS.PARTICIPANTES)) || [];
             state.participantes = rawPart.map(p => {
                 if (!p) return null;
-                if (typeof p === 'string') return { name: p, disponibilidad: createDefaultDisp(), cartas: false };
+                if (typeof p === 'string') {
+                    return {
+                        name: p,
+                        disponibilidad: createDefaultDisp(),
+                        cartas: false,
+                        horariosDisponibles: null,
+                        preferenciasLugares: [],
+                        preferenciasCompaneros: [],
+                        conyuge: '',
+                        maxSalidasMes: null
+                    };
+                }
                 return {
                     name: p.name || '',
                     disponibilidad: sanitizeDisponibilidad(p.disponibilidad),
-                    cartas: !!p.cartas
+                    cartas: !!p.cartas,
+                    horariosDisponibles: p.horariosDisponibles && typeof p.horariosDisponibles === 'object'
+                        ? Object.fromEntries(Object.entries(p.horariosDisponibles).map(([day, hours]) => [
+                            day,
+                            Array.isArray(hours) ? hours.filter(hour => typeof hour === 'string') : []
+                        ]))
+                        : null,
+                    preferenciasLugares: Array.isArray(p.preferenciasLugares) ? p.preferenciasLugares : [],
+                    preferenciasCompaneros: Array.isArray(p.preferenciasCompaneros) ? p.preferenciasCompaneros : [],
+                    conyuge: typeof p.conyuge === 'string' ? p.conyuge : '',
+                    maxSalidasMes: Number.isSafeInteger(p.maxSalidasMes) && p.maxSalidasMes > 0
+                        ? p.maxSalidasMes
+                        : null
                 };
             }).filter(p => p && p.name);
 
@@ -111,9 +160,37 @@
             const savedDias = JSON.parse(localStorage.getItem(KEYS.CONFIG_DIAS));
             if (savedDias) state.configDias = savedDias;
 
-            if (localStorage.getItem(KEYS.THEME) === 'dark') {
-                document.body.dataset.theme = 'dark';
+            const savedLimit = parseInt(localStorage.getItem(KEYS.LIMITE_HORARIOS_DIA), 10);
+            state.limiteHorariosDia = Number.isInteger(savedLimit) && savedLimit > 0 ? savedLimit : 2;
+
+            const savedFechas = JSON.parse(localStorage.getItem(KEYS.CONFIG_FECHAS));
+            if (savedFechas && typeof savedFechas === 'object') state.configFechas = savedFechas;
+
+            const savedDisponibilidadLugares = JSON.parse(localStorage.getItem(KEYS.DISPONIBILIDAD_LUGARES));
+            if (savedDisponibilidadLugares && typeof savedDisponibilidadLugares === 'object') {
+                state.disponibilidadLugares = Object.fromEntries(
+                    Object.entries(savedDisponibilidadLugares).map(([place, availability]) => [
+                        place,
+                        availability && typeof availability === 'object'
+                            ? Object.fromEntries(Object.entries(availability).map(([day, hours]) => [
+                                day,
+                                Array.isArray(hours) ? hours.filter(hour => typeof hour === 'string') : []
+                            ]))
+                            : {}
+                    ])
+                );
             }
+
+            const savedParticipantesPorLugar = JSON.parse(localStorage.getItem(KEYS.PARTICIPANTES_POR_LUGAR));
+            if (savedParticipantesPorLugar && typeof savedParticipantesPorLugar === 'object') {
+                state.participantesPorLugar = Object.fromEntries(
+                    Object.entries(savedParticipantesPorLugar).map(([place, participants]) => [
+                        place,
+                        Array.isArray(participants) ? participants.filter(name => typeof name === 'string') : []
+                    ])
+                );
+            }
+
         } catch (e) {
             console.error("Error al cargar localStorage:", e);
         }
@@ -121,7 +198,15 @@
 
     // --- QUITAR ELEMENTOS DE LISTA ---
     function removeListItem(type, index) {
-        if (type === 'lugares' && state.lugares[index] !== undefined) state.lugares.splice(index, 1);
+        if (type === 'lugares' && state.lugares[index] !== undefined) {
+            const removedPlace = state.lugares[index];
+            delete state.disponibilidadLugares[removedPlace];
+            delete state.participantesPorLugar[removedPlace];
+            state.lugares.splice(index, 1);
+            state.participantes.forEach(participant => {
+                participant.preferenciasLugares = participant.preferenciasLugares.filter(place => place !== removedPlace);
+            });
+        }
         if (type === 'grupos' && state.grupos[index] !== undefined) state.grupos.splice(index, 1);
         saveToStorage();
         renderListas();
@@ -150,59 +235,20 @@
             topRow.style.justifyContent = 'space-between';
 
             const nameSpan = document.createElement('span');
-            nameSpan.textContent = item.name;
+            nameSpan.textContent = item.conyuge ? `💍 ${item.name}` : item.name;
+            nameSpan.title = item.conyuge ? `Matrimonio con ${item.conyuge}` : '';
             nameSpan.style.flex = '1';
             nameSpan.style.fontWeight = '500';
 
-            const rightGroup = document.createElement('div');
-            rightGroup.style.display = 'flex';
-            rightGroup.style.alignItems = 'center';
-
-            const tagCont = document.createElement('div');
-            tagCont.style.display = 'flex';
-            tagCont.style.gap = '2px';
-
-            ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'].forEach((letra, idx) => {
-                const disp = item.disponibilidad[idx] || { m: false, t: false };
-                const isActive = disp.m || disp.t;
-                const btn = document.createElement('button');
-                btn.textContent = letra;
-                btn.style.padding = '2px 5px';
-                btn.style.fontSize = '0.75em';
-                btn.style.borderRadius = '3px';
-                btn.style.border = '1px solid #ccc';
-                btn.style.cursor = 'pointer';
-
-                if (isActive) {
-                    btn.style.background = '#4CAF50';
-                    btn.style.color = 'white';
-                } else {
-                    btn.style.background = 'transparent';
-                    btn.style.color = 'inherit';
-                }
-
-                btn.onclick = () => {
-                    if (isActive) {
-                        item.disponibilidad[idx] = { m: false, t: false, pM: false, pT: false };
-                    } else {
-                        item.disponibilidad[idx] = { m: true, t: true, pM: false, pT: false };
-                    }
-                    saveToStorage();
-                    renderListas();
-                };
-                tagCont.appendChild(btn);
-            });
-
-            const uiKey = 'part_cfg_' + item.name;
             const configBtn = document.createElement('button');
-            configBtn.innerHTML = '⚙️';
-            configBtn.style.background = 'transparent';
-            configBtn.style.border = 'none';
-            configBtn.style.cursor = 'pointer';
-            configBtn.style.marginLeft = '6px';
+            configBtn.textContent = '⚙️';
+            configBtn.title = 'Editar disponibilidad y preferencias en la barra lateral';
+            configBtn.setAttribute('aria-label', configBtn.title);
             configBtn.onclick = () => {
-                state.uiState[uiKey] = !state.uiState[uiKey];
-                renderListas();
+                state.detailSelectedParticipant = item.name;
+                setDetailsSection('participants');
+                renderDetailsSidebar();
+                els.detailsSidebar.scrollIntoView({ behavior: 'smooth', block: 'start' });
             };
 
             const delBtn = document.createElement('button');
@@ -216,87 +262,25 @@
             delBtn.onclick = () => {
                 if (confirm(`¿Eliminar a "${item.name}"?`)) {
                     state.participantes = state.participantes.filter(p => p.name !== item.name);
+                    state.participantes.forEach(participant => {
+                        participant.preferenciasCompaneros = participant.preferenciasCompaneros.filter(name => name !== item.name);
+                        if (participant.conyuge === item.name) participant.conyuge = '';
+                    });
+                    Object.keys(state.participantesPorLugar).forEach(place => {
+                        state.participantesPorLugar[place] = state.participantesPorLugar[place]
+                            .filter(name => name !== item.name);
+                    });
                     saveToStorage();
                     renderListas();
-                }
+                };
             };
 
-            rightGroup.append(tagCont, configBtn, delBtn);
+            const rightGroup = document.createElement('div');
+            rightGroup.style.display = 'flex';
+            rightGroup.style.alignItems = 'center';
+            rightGroup.append(configBtn, delBtn);
             topRow.append(nameSpan, rightGroup);
             li.appendChild(topRow);
-
-            const detailsDiv = document.createElement('div');
-            detailsDiv.style.display = state.uiState[uiKey] ? 'block' : 'none';
-            detailsDiv.style.fontSize = '0.82em';
-            detailsDiv.style.marginTop = '8px';
-            detailsDiv.style.background = 'var(--card-accent, #f9f9f9)';
-            detailsDiv.style.padding = '8px';
-            detailsDiv.style.borderRadius = '4px';
-            detailsDiv.style.border = '1px solid var(--border)';
-
-            const header = document.createElement('div');
-            header.style.display = 'grid';
-            header.style.gridTemplateColumns = '40px 1fr 1fr 1fr 1fr';
-            header.style.textAlign = 'center';
-            header.style.fontWeight = 'bold';
-            header.style.marginBottom = '6px';
-            header.style.borderBottom = '1px solid var(--border)';
-            header.style.paddingBottom = '3px';
-            header.innerHTML = `<span>Día</span><span title="Mañana">☀️ M</span><span title="Tarde">🌤️ T</span><span title="Prioridad M">⭐ M</span><span title="Prioridad T">⭐ T</span>`;
-            detailsDiv.appendChild(header);
-
-            ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'].forEach((letra, idx) => {
-                const row = document.createElement('div');
-                row.style.display = 'grid';
-                row.style.gridTemplateColumns = '40px 1fr 1fr 1fr 1fr';
-                row.style.textAlign = 'center';
-                row.style.alignItems = 'center';
-                row.style.marginBottom = '4px';
-
-                const dSpan = document.createElement('span');
-                dSpan.textContent = letra;
-                dSpan.style.fontWeight = 'bold';
-
-                const currentDisp = item.disponibilidad[idx] || { m: false, t: false, pM: false, pT: false };
-
-                const chkM = document.createElement('input'); chkM.type = 'checkbox'; chkM.checked = !!currentDisp.m;
-                const chkT = document.createElement('input'); chkT.type = 'checkbox'; chkT.checked = !!currentDisp.t;
-                const chkPM = document.createElement('input'); chkPM.type = 'checkbox'; chkPM.checked = !!currentDisp.pM;
-                const chkPT = document.createElement('input'); chkPT.type = 'checkbox'; chkPT.checked = !!currentDisp.pT;
-
-                const updateDisp = (e) => {
-                    if (e.target === chkPM && chkPM.checked) chkM.checked = true;
-                    if (e.target === chkPT && chkPT.checked) chkT.checked = true;
-                    if (e.target === chkM && !chkM.checked) chkPM.checked = false;
-                    if (e.target === chkT && !chkT.checked) chkPT.checked = false;
-
-                    item.disponibilidad[idx] = { m: chkM.checked, t: chkT.checked, pM: chkPM.checked, pT: chkPT.checked };
-                    saveToStorage();
-                    renderTabla();
-                };
-
-                chkM.onchange = updateDisp; chkT.onchange = updateDisp; chkPM.onchange = updateDisp; chkPT.onchange = updateDisp;
-                row.append(dSpan, chkM, chkT, chkPM, chkPT);
-                detailsDiv.appendChild(row);
-            });
-
-            const genOptions = document.createElement('div');
-            genOptions.style.marginTop = '8px';
-            genOptions.style.borderTop = '1px dashed var(--border)';
-            genOptions.style.paddingTop = '8px';
-            genOptions.innerHTML = `<label style="cursor:pointer; display:flex; align-items:center; gap:5px;"><input type="checkbox" ${item.cartas ? 'checked' : ''}> ✉️ Disponible siempre (Cartas / Especial)</label>`;
-
-            const chkCartas = genOptions.querySelector('input');
-            if (chkCartas) {
-                chkCartas.onchange = (e) => {
-                    item.cartas = e.target.checked;
-                    saveToStorage();
-                    renderTabla();
-                };
-            }
-            detailsDiv.appendChild(genOptions);
-
-            li.appendChild(detailsDiv);
             els.listaParticipantes.appendChild(li);
         });
 
@@ -317,40 +301,536 @@
         }
 
         renderTabla();
+        renderDetailsSidebar();
     }
 
-    // --- CONFIGURADOR DE HORARIOS ---
-    function renderDiasSelector() {
-        const container = els.diasContainer;
-        if (!container) return;
-        container.innerHTML = '';
+    function renderDetailsSelect(select, items, selectedValue, onChange, placeholder) {
+        select.replaceChildren();
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = placeholder;
+        select.appendChild(placeholderOption);
 
-        DIAS_SEMANA.forEach((dia, idx) => {
-            const div = document.createElement('div');
-            div.style.marginBottom = '10px';
-            div.style.borderBottom = '1px solid var(--border)';
-            div.style.paddingBottom = '5px';
+        items.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item;
+            option.textContent = item;
+            select.appendChild(option);
+        });
+        select.value = selectedValue;
+        select.onchange = onChange;
+        select.onchange = onChange;
+    }
 
-            const label = document.createElement('strong');
-            label.textContent = dia + ': ';
-            div.appendChild(label);
+    function createDetailsSection(title) {
+        const section = document.createElement('section');
+        section.className = 'details-section';
+        const heading = document.createElement('h4');
+        heading.textContent = title;
+        section.appendChild(heading);
+        return section;
+    }
 
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.placeholder = 'Ej: 7:00-9:00 am, 4:00-6:00 pm';
-            input.value = (state.configDias && state.configDias[idx] ? state.configDias[idx] : []).join(', ');
-            input.style.width = '65%';
-            input.style.marginLeft = '10px';
+    function setDetailsSection(section) {
+        state.detailActiveSection = section === 'places' ? 'places' : 'participants';
+        const showParticipants = state.detailActiveSection === 'participants';
+        els.detailsParticipantsPane.hidden = !showParticipants;
+        els.detailsPlacesPane.hidden = showParticipants;
+        els.detailsParticipantsTab.classList.toggle('active', showParticipants);
+        els.detailsPlacesTab.classList.toggle('active', !showParticipants);
+        els.detailsParticipantsTab.setAttribute('aria-selected', String(showParticipants));
+        els.detailsPlacesTab.setAttribute('aria-selected', String(!showParticipants));
+    }
 
-            input.onchange = (e) => {
-                if (!state.configDias) state.configDias = {};
-                state.configDias[idx] = e.target.value.split(',').map(h => h.trim()).filter(h => h);
+    function createDetailsCheckbox(labelText, checked, onChange) {
+        const label = document.createElement('label');
+        label.className = 'details-checkbox';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = checked;
+        checkbox.onchange = onChange;
+        const text = document.createElement('span');
+        text.textContent = labelText;
+        label.append(checkbox, text);
+        return label;
+    }
+
+    function getParticipantAvailableForHour(participant, day, hour) {
+        if (participant.horariosDisponibles && Object.prototype.hasOwnProperty.call(participant.horariosDisponibles, day)) {
+            return participant.horariosDisponibles[day].includes(hour);
+        }
+        const availability = participant.disponibilidad && participant.disponibilidad[day];
+        if (!availability) return false;
+        return getTurnoPorHora(hour) === 'm' ? availability.m : availability.t;
+    }
+
+    function isLugarAvailable(lugar, day, hour) {
+        const availability = state.disponibilidadLugares[lugar];
+        return !!availability &&
+            Object.prototype.hasOwnProperty.call(availability, day) &&
+            availability[day].includes(hour);
+    }
+
+    function isParticipantAllowedAtLocation(participantName, location) {
+        const authorizedParticipants = state.participantesPorLugar[location];
+        return !location ||
+            !Array.isArray(authorizedParticipants) ||
+            authorizedParticipants.length === 0 ||
+            authorizedParticipants.includes(participantName);
+    }
+
+    function arePreferredCompanions(firstName, secondName) {
+        const first = state.participantes.find(participant => participant.name === firstName);
+        const second = state.participantes.find(participant => participant.name === secondName);
+        return !!first && !!second && (
+            first.preferenciasCompaneros.includes(secondName) ||
+            second.preferenciasCompaneros.includes(firstName)
+        );
+    }
+
+    function areMarried(firstName, secondName) {
+        const first = state.participantes.find(participant => participant.name === firstName);
+        return !!first && first.conyuge === secondName;
+    }
+
+    function setSpouse(participant, spouseName) {
+        if (participant.conyuge) {
+            const formerSpouse = state.participantes.find(item => item.name === participant.conyuge);
+            if (formerSpouse?.conyuge === participant.name) formerSpouse.conyuge = '';
+        }
+
+        participant.conyuge = '';
+        if (spouseName) {
+            const spouse = state.participantes.find(item => item.name === spouseName);
+            if (!spouse || spouse === participant) return;
+            if (spouse.conyuge) {
+                const formerSpouse = state.participantes.find(item => item.name === spouse.conyuge);
+                if (formerSpouse?.conyuge === spouse.name) formerSpouse.conyuge = '';
+            }
+            participant.conyuge = spouse.name;
+            spouse.conyuge = participant.name;
+        }
+    }
+
+    function isParticipantAllowedWithCompanions(participantName, location, assignedNames) {
+        return isParticipantAllowedAtLocation(participantName, location) ||
+            assignedNames.some(name => name !== participantName && (
+                arePreferredCompanions(participantName, name) || areMarried(participantName, name)
+            ));
+    }
+
+    function renderDetailsSidebar() {
+        if (!els.detailsSidebar) return;
+
+        const participants = state.participantes.filter(participant => participant && participant.name)
+            .sort((a, b) => a.name.localeCompare(b.name));
+        const places = (state.lugares || []).filter(Boolean).slice().sort((a, b) => a.localeCompare(b));
+
+        if (!participants.some(participant => participant.name === state.detailSelectedParticipant)) {
+            state.detailSelectedParticipant = participants[0]?.name || '';
+        }
+        if (!places.includes(state.detailSelectedLugar)) {
+            state.detailSelectedLugar = places[0] || '';
+        }
+        renderDetailsSelect(
+            els.detailsParticipants,
+            participants.map(participant => participant.name),
+            state.detailSelectedParticipant,
+            event => {
+                state.detailSelectedParticipant = event.target.value;
+                renderDetailsSidebar();
+            },
+            'Seleccionar participante'
+        );
+
+        els.detailsParticipantInfo.replaceChildren();
+        const participant = participants.find(item => item.name === state.detailSelectedParticipant);
+        if (participant) {
+            const marriageSection = createDetailsSection('Matrimonio');
+            const spouseSelect = document.createElement('select');
+            spouseSelect.setAttribute('aria-label', 'Cónyuge');
+            const noSpouseOption = document.createElement('option');
+            noSpouseOption.value = '';
+            noSpouseOption.textContent = 'Sin cónyuge';
+            spouseSelect.appendChild(noSpouseOption);
+            participants.filter(item => item.name !== participant.name).forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.name;
+                option.textContent = item.name;
+                spouseSelect.appendChild(option);
+            });
+            spouseSelect.value = participant.conyuge;
+            spouseSelect.onchange = event => {
+                setSpouse(participant, event.target.value);
+                saveToStorage();
+                renderListas();
+            };
+            marriageSection.appendChild(spouseSelect);
+            if (participant.conyuge) {
+                const marriageLabel = document.createElement('small');
+                marriageLabel.textContent = `💍 Matrimonio con ${participant.conyuge}`;
+                marriageSection.appendChild(marriageLabel);
+            }
+            els.detailsParticipantInfo.appendChild(marriageSection);
+
+            const monthlyLimitSection = createDetailsSection('Frecuencia mensual');
+            const monthlyLimitLabel = document.createElement('label');
+            monthlyLimitLabel.textContent = 'Máximo de salidas al mes';
+            monthlyLimitLabel.htmlFor = 'participantMonthlyLimit';
+            const monthlyLimitInput = document.createElement('input');
+            monthlyLimitInput.id = 'participantMonthlyLimit';
+            monthlyLimitInput.type = 'number';
+            monthlyLimitInput.min = '1';
+            monthlyLimitInput.step = '1';
+            monthlyLimitInput.placeholder = 'Sin límite';
+            monthlyLimitInput.value = participant.maxSalidasMes ?? '';
+            monthlyLimitInput.setAttribute('aria-label', 'Máximo de salidas al mes');
+            monthlyLimitInput.onchange = () => {
+                const value = monthlyLimitInput.value.trim();
+                const limit = value === '' ? null : Number(value);
+                if (limit !== null && (!Number.isSafeInteger(limit) || limit < 1)) {
+                    monthlyLimitInput.setCustomValidity('Indica un número entero mayor que cero.');
+                    monthlyLimitInput.reportValidity();
+                    monthlyLimitInput.setCustomValidity('');
+                    monthlyLimitInput.value = participant.maxSalidasMes ?? '';
+                    return;
+                }
+                participant.maxSalidasMes = limit;
                 saveToStorage();
                 renderTabla();
             };
+            const monthlyLimitHint = document.createElement('small');
+            monthlyLimitHint.textContent = 'Déjalo vacío si no tiene límite.';
+            monthlyLimitSection.append(monthlyLimitLabel, monthlyLimitInput, monthlyLimitHint);
+            els.detailsParticipantInfo.appendChild(monthlyLimitSection);
 
-            div.appendChild(input);
-            container.appendChild(div);
+            const scheduleSection = createDetailsSection('Horarios disponibles');
+            DIAS_SEMANA.forEach((dayName, day) => {
+                const daySection = document.createElement('div');
+                daySection.className = 'details-day';
+                const dayHeading = document.createElement('strong');
+                dayHeading.textContent = dayName;
+                daySection.appendChild(dayHeading);
+
+                const hours = state.configDias[day] || [];
+                if (!hours.length) {
+                    const empty = document.createElement('small');
+                    empty.textContent = 'Sin horarios configurados';
+                    daySection.appendChild(empty);
+                }
+
+                hours.forEach(hour => {
+                    daySection.appendChild(createDetailsCheckbox(hour, getParticipantAvailableForHour(participant, day, hour), event => {
+                        if (!participant.horariosDisponibles) {
+                            participant.horariosDisponibles = {};
+                            for (let idx = 0; idx < 7; idx++) {
+                                participant.horariosDisponibles[idx] = (state.configDias[idx] || []).filter(configuredHour => {
+                                    const availability = participant.disponibilidad[idx];
+                                    if (!availability) return false;
+                                    return getTurnoPorHora(configuredHour) === 'm' ? availability.m : availability.t;
+                                });
+                            }
+                        }
+
+                        const selectedHours = new Set(participant.horariosDisponibles[day] || []);
+                        if (event.target.checked) selectedHours.add(hour);
+                        else selectedHours.delete(hour);
+                        participant.horariosDisponibles[day] = [...selectedHours];
+
+                        const availability = participant.disponibilidad[day];
+                        const morningHours = (state.configDias[day] || []).filter(configuredHour => getTurnoPorHora(configuredHour) === 'm');
+                        const afternoonHours = (state.configDias[day] || []).filter(configuredHour => getTurnoPorHora(configuredHour) === 't');
+                        availability.m = morningHours.some(configuredHour => selectedHours.has(configuredHour));
+                        availability.t = afternoonHours.some(configuredHour => selectedHours.has(configuredHour));
+                        if (!availability.m) availability.pM = false;
+                        if (!availability.t) availability.pT = false;
+
+                        saveToStorage();
+                        renderTabla();
+                    }));
+                });
+                scheduleSection.appendChild(daySection);
+            });
+            els.detailsParticipantInfo.appendChild(scheduleSection);
+
+            const specialAvailabilitySection = createDetailsSection('Disponibilidad especial');
+            specialAvailabilitySection.appendChild(createDetailsCheckbox(
+                'Disponible siempre (Cartas / Especial)',
+                participant.cartas,
+                event => {
+                    participant.cartas = event.target.checked;
+                    saveToStorage();
+                    renderTabla();
+                }
+            ));
+            els.detailsParticipantInfo.appendChild(specialAvailabilitySection);
+
+            const preferredPlacesSection = createDetailsSection('Lugares preferidos');
+            if (places.length) {
+                places.forEach(place => {
+                    preferredPlacesSection.appendChild(createDetailsCheckbox(
+                        place,
+                        participant.preferenciasLugares.includes(place),
+                        event => {
+                            const preferences = new Set(participant.preferenciasLugares);
+                            if (event.target.checked) preferences.add(place);
+                            else preferences.delete(place);
+                            participant.preferenciasLugares = [...preferences];
+                            saveToStorage();
+                        }
+                    ));
+                });
+            } else {
+                const empty = document.createElement('small');
+                empty.textContent = 'Añade lugares para elegir preferencias.';
+                preferredPlacesSection.appendChild(empty);
+            }
+            els.detailsParticipantInfo.appendChild(preferredPlacesSection);
+
+            const preferredCompanionsSection = createDetailsSection('Compañeros preferidos');
+            const companions = participants.filter(item => item.name !== participant.name);
+            if (companions.length) {
+                companions.forEach(companion => {
+                    preferredCompanionsSection.appendChild(createDetailsCheckbox(
+                        companion.name,
+                        participant.preferenciasCompaneros.includes(companion.name),
+                        event => {
+                            const preferences = new Set(participant.preferenciasCompaneros);
+                            if (event.target.checked) preferences.add(companion.name);
+                            else preferences.delete(companion.name);
+                            participant.preferenciasCompaneros = [...preferences];
+                            saveToStorage();
+                        }
+                    ));
+                });
+            } else {
+                const empty = document.createElement('small');
+                empty.textContent = 'Añade más participantes para elegir compañeros.';
+                preferredCompanionsSection.appendChild(empty);
+            }
+            els.detailsParticipantInfo.appendChild(preferredCompanionsSection);
+        } else {
+            const empty = document.createElement('small');
+            empty.textContent = 'Añade participantes para editar sus preferencias.';
+            els.detailsParticipantInfo.appendChild(empty);
+        }
+
+        renderDetailsSelect(
+            els.detailsPlaces,
+            places,
+            state.detailSelectedLugar,
+            event => {
+                state.detailSelectedLugar = event.target.value;
+                renderDetailsSidebar();
+            },
+            'Seleccionar lugar'
+        );
+
+        els.detailsPlaceInfo.replaceChildren();
+        const selectedPlace = state.detailSelectedLugar;
+        if (!selectedPlace) {
+            const empty = document.createElement('small');
+            empty.textContent = 'Añade lugares para configurar su disponibilidad.';
+            els.detailsPlaceInfo.appendChild(empty);
+            return;
+        }
+
+        const locationHoursSection = createDetailsSection('Días y horarios disponibles');
+        DIAS_SEMANA.forEach((dayName, day) => {
+            const daySection = document.createElement('div');
+            daySection.className = 'details-day';
+            const dayHeading = document.createElement('strong');
+            dayHeading.textContent = dayName;
+            daySection.appendChild(dayHeading);
+
+            const hours = state.configDias[day] || [];
+            if (!hours.length) {
+                const empty = document.createElement('small');
+                empty.textContent = 'Sin horarios configurados';
+                daySection.appendChild(empty);
+            }
+
+            hours.forEach(hour => {
+                daySection.appendChild(createDetailsCheckbox(
+                    hour,
+                    isLugarAvailable(selectedPlace, day, hour),
+                    event => {
+                        if (!state.disponibilidadLugares[selectedPlace]) {
+                            state.disponibilidadLugares[selectedPlace] = {};
+                        }
+
+                        const selectedHours = new Set(state.disponibilidadLugares[selectedPlace][day] || []);
+                        if (event.target.checked) selectedHours.add(hour);
+                        else selectedHours.delete(hour);
+                        state.disponibilidadLugares[selectedPlace][day] = [...selectedHours];
+                        saveToStorage();
+                        renderTabla();
+                    }
+                ));
+            });
+            locationHoursSection.appendChild(daySection);
+        });
+        els.detailsPlaceInfo.appendChild(locationHoursSection);
+
+        const allowedParticipantsSection = createDetailsSection('Participantes autorizados');
+        const authorizedNames = Array.isArray(state.participantesPorLugar[selectedPlace])
+            ? state.participantesPorLugar[selectedPlace]
+            : [];
+        const hasParticipantRestriction = authorizedNames.length > 0;
+        const restrictionHelp = document.createElement('small');
+        restrictionHelp.textContent = hasParticipantRestriction
+            ? 'Solo los participantes marcados podrán asignarse a este lugar.'
+            : 'Si no marcas a nadie, el lugar queda disponible para todos los participantes.';
+        allowedParticipantsSection.appendChild(restrictionHelp);
+
+        if (participants.length) {
+            participants.forEach(person => {
+                allowedParticipantsSection.appendChild(createDetailsCheckbox(
+                    person.name,
+                    authorizedNames.includes(person.name),
+                    event => {
+                        const isAssignedToPlace = Object.entries(state.manuales).some(([key, name]) => {
+                            const match = key.match(/^(.*)_p\d+$/);
+                            return name === person.name &&
+                                match &&
+                                state.manuales[`${match[1]}_lugar`] === selectedPlace;
+                        });
+                        if (!event.target.checked && isAssignedToPlace) {
+                            event.target.checked = true;
+                            alert(`Primero quita a ${person.name} de las salidas asignadas a ${selectedPlace}.`);
+                            return;
+                        }
+
+                        const allowedNames = new Set(
+                            Array.isArray(state.participantesPorLugar[selectedPlace])
+                                ? state.participantesPorLugar[selectedPlace]
+                                : []
+                        );
+                        if (event.target.checked) allowedNames.add(person.name);
+                        else allowedNames.delete(person.name);
+                        state.participantesPorLugar[selectedPlace] = [...allowedNames];
+                        saveToStorage();
+                        renderTabla();
+                        renderDetailsSidebar();
+                    }
+                ));
+            });
+        } else {
+            const empty = document.createElement('small');
+            empty.textContent = 'Añade participantes para configurar quiénes pueden salir a este lugar.';
+            allowedParticipantsSection.appendChild(empty);
+        }
+        els.detailsPlaceInfo.appendChild(allowedParticipantsSection);
+    }
+
+    function renderHorariosGlobales() {
+        const container = els.horariosGlobalesContainer;
+        if (!container) return;
+        container.innerHTML = '';
+
+        const limitControl = document.createElement('div');
+        limitControl.className = 'daily-hours-limit';
+        const limitLabel = document.createElement('label');
+        limitLabel.textContent = 'Máximo de horarios visibles por día:';
+        limitLabel.htmlFor = 'maxHorariosDia';
+        const limitInput = document.createElement('input');
+        limitInput.id = 'maxHorariosDia';
+        limitInput.type = 'number';
+        limitInput.min = '1';
+        limitInput.step = '1';
+        limitInput.value = String(state.limiteHorariosDia);
+        limitInput.onchange = () => {
+            const limit = parseInt(limitInput.value, 10);
+            if (!Number.isInteger(limit) || limit < 1) {
+                limitInput.value = String(state.limiteHorariosDia);
+                return;
+            }
+            state.limiteHorariosDia = limit;
+            saveToStorage();
+            renderTabla();
+        };
+        limitControl.append(limitLabel, limitInput);
+        container.appendChild(limitControl);
+
+        DIAS_SEMANA.forEach((day, dayIndex) => {
+            const daySection = document.createElement('section');
+            daySection.className = 'global-hours-day';
+
+            const heading = document.createElement('h4');
+            heading.textContent = day;
+            daySection.appendChild(heading);
+
+            (state.configDias[dayIndex] || []).forEach((hour, hourIndex) => {
+                const row = document.createElement('div');
+                row.className = 'global-hour-row';
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = hour;
+                input.setAttribute('aria-label', `Horario ${hourIndex + 1} de ${day}`);
+                input.placeholder = 'Ej: 7:00-9:00 am';
+                input.onchange = () => {
+                    const updatedHour = input.value.trim();
+                    const hours = [...(state.configDias[dayIndex] || [])];
+                    if (updatedHour) {
+                        hours[hourIndex] = updatedHour;
+                    } else {
+                        hours.splice(hourIndex, 1);
+                    }
+                    state.configDias[dayIndex] = hours;
+                    saveToStorage();
+                    renderHorariosGlobales();
+                    renderTabla();
+                    renderDetailsSidebar();
+                };
+
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.textContent = '×';
+                removeButton.title = `Eliminar horario de ${day}`;
+                removeButton.setAttribute('aria-label', `Eliminar horario de ${day}`);
+                removeButton.onclick = () => {
+                    state.configDias[dayIndex].splice(hourIndex, 1);
+                    saveToStorage();
+                    renderHorariosGlobales();
+                    renderTabla();
+                    renderDetailsSidebar();
+                };
+
+                row.append(input, removeButton);
+                daySection.appendChild(row);
+            });
+
+            const addRow = document.createElement('div');
+            addRow.className = 'global-hour-row global-hour-add';
+            const newHourInput = document.createElement('input');
+            newHourInput.type = 'text';
+            newHourInput.placeholder = 'Nuevo horario (ej: 4:00-6:00 pm)';
+            newHourInput.setAttribute('aria-label', `Nuevo horario para ${day}`);
+
+            const addButton = document.createElement('button');
+            addButton.type = 'button';
+            addButton.textContent = '+';
+            addButton.title = `Añadir horario a ${day}`;
+            addButton.setAttribute('aria-label', `Añadir horario a ${day}`);
+            addButton.onclick = () => {
+                const newHour = newHourInput.value.trim();
+                if (!newHour) {
+                    newHourInput.focus();
+                    return;
+                }
+                if (!state.configDias[dayIndex].includes(newHour)) {
+                    state.configDias[dayIndex].push(newHour);
+                    saveToStorage();
+                    renderHorariosGlobales();
+                    renderTabla();
+                    renderDetailsSidebar();
+                }
+            };
+
+            addRow.append(newHourInput, addButton);
+            daySection.appendChild(addRow);
+            container.appendChild(daySection);
         });
     }
 
@@ -383,6 +863,140 @@
         return 'm';
     }
 
+    function getDateKey(date) {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+
+    function getParticipantMonthlyAssignmentCount(participantName, date, excludedKey = '') {
+        const monthPrefix = getDateKey(date).slice(0, 7);
+        const outingKeys = new Set();
+        Object.entries(state.manuales).forEach(([key, name]) => {
+            if (name !== participantName || key === excludedKey || !key.startsWith(monthPrefix) || !/_p\d+$/.test(key)) {
+                return;
+            }
+            outingKeys.add(key.replace(/_p\d+$/, ''));
+        });
+        return outingKeys.size;
+    }
+
+    function isWithinMonthlyLimit(participant, date, excludedKey = '') {
+        return participant.maxSalidasMes === null ||
+            getParticipantMonthlyAssignmentCount(participant.name, date, excludedKey) < participant.maxSalidasMes;
+    }
+
+    function getPreferredPairAssignmentCount(participantName, assignedNames, dayOfWeek, hour, location) {
+        const pairAssignments = new Set();
+        Object.entries(state.manuales).forEach(([key, name]) => {
+            if (name !== participantName || !/_p\d+$/.test(key)) return;
+
+            const outingKey = key.replace(/_p\d+$/, '');
+            const hourEnd = outingKey.lastIndexOf('_');
+            if (hour && outingKey.slice(11, hourEnd) !== hour) return;
+            const [year, month, day] = outingKey.slice(0, 10).split('-').map(Number);
+            if (!year || new Date(year, month - 1, day).getDay() !== dayOfWeek) return;
+            if (location && state.manuales[`${outingKey}_lugar`] !== location) return;
+
+            assignedNames.forEach(assignedName => {
+                if (arePreferredCompanions(participantName, assignedName)) {
+                    pairAssignments.add(`${outingKey}|${assignedName}`);
+                }
+            });
+        });
+        return pairAssignments.size;
+    }
+
+    function getRotationTieRank(participantName, date, hour) {
+        const value = `${getDateKey(date)}|${hour}|${participantName}`;
+        return Array.from(value).reduce((hash, character) =>
+            (hash * 31 + character.charCodeAt(0)) >>> 0, 0);
+    }
+
+    function isAssignedToAnotherOutingOnDate(participantName, date, currentOutingKey) {
+        const datePrefix = `${getDateKey(date)}_`;
+        return Object.entries(state.manuales).some(([key, name]) => {
+            if (name !== participantName || !key.startsWith(datePrefix) || !/_p\d+$/.test(key)) return false;
+            return key.replace(/_p\d+$/, '') !== currentOutingKey;
+        });
+    }
+
+    function getHorasConfiguradas(date) {
+        const dateKey = getDateKey(date);
+        const hours = Object.prototype.hasOwnProperty.call(state.configFechas, dateKey)
+            ? state.configFechas[dateKey]
+            : (state.configDias && state.configDias[date.getDay()]) ? state.configDias[date.getDay()] : [];
+        return hours.filter(hour =>
+            state.participantes.some(participant =>
+                participant.cartas || getParticipantAvailableForHour(participant, date.getDay(), hour)
+            )
+        ).slice(0, state.limiteHorariosDia);
+    }
+
+    function getKeyBase(date, hora, index) {
+        return `${getDateKey(date)}_${hora}_${index}`;
+    }
+
+    function updateFechaHorario(date, horarios, oldKeyBase = null, newKeyBase = null) {
+        const keysToMove = oldKeyBase && newKeyBase
+            ? Object.keys(state.manuales).filter(key =>
+                key === `${oldKeyBase}_lugar` || key.startsWith(`${oldKeyBase}_p`)
+            )
+            : [];
+        const movedEntries = keysToMove.map(key => [
+            `${newKeyBase}${key.slice(oldKeyBase.length)}`,
+            state.manuales[key]
+        ]);
+
+        if (movedEntries.some(([key]) => Object.prototype.hasOwnProperty.call(state.manuales, key) && !keysToMove.includes(key))) {
+            alert('Ya existe una salida con asignaciones en ese horario. Elige otra hora.');
+            return false;
+        }
+
+        state.configFechas[getDateKey(date)] = horarios;
+        keysToMove.forEach(key => delete state.manuales[key]);
+        movedEntries.forEach(([key, value]) => {
+            state.manuales[key] = value;
+        });
+        saveToStorage();
+        renderTabla();
+        return true;
+    }
+
+    function removeFechaHorario(date, horarioIndex) {
+        const dateKey = getDateKey(date);
+        const horariosActuales = getHorasConfiguradas(date);
+        const removedHour = horariosActuales[horarioIndex];
+        if (!removedHour) return;
+
+        const assignmentsByIndex = horariosActuales.map((hour, index) => {
+            const keyBase = getKeyBase(date, hour, index);
+            return Object.fromEntries(
+                Object.entries(state.manuales).filter(([key]) =>
+                    key === `${keyBase}_lugar` || key.startsWith(`${keyBase}_p`)
+                ).map(([key, value]) => [key.slice(keyBase.length), value])
+            );
+        });
+        horariosActuales.forEach((hour, index) => {
+            const keyBase = getKeyBase(date, hour, index);
+            Object.keys(state.manuales).forEach(key => {
+                if (key === `${keyBase}_lugar` || key.startsWith(`${keyBase}_p`)) {
+                    delete state.manuales[key];
+                }
+            });
+        });
+
+        horariosActuales.splice(horarioIndex, 1);
+        state.configFechas[dateKey] = horariosActuales;
+        horariosActuales.forEach((hour, index) => {
+            const keyBase = getKeyBase(date, hour, index);
+            Object.entries(assignmentsByIndex[index < horarioIndex ? index : index + 1] || {}).forEach(([suffix, value]) => {
+                state.manuales[`${keyBase}${suffix}`] = value;
+            });
+        });
+
+        saveToStorage();
+        renderTabla();
+    }
+
     // --- RENDERIZADO DEL CRONOGRAMA ---
     function renderTabla() {
         if (!els.tablaBody || !els.fInicio) return;
@@ -411,7 +1025,7 @@
 
         dates.forEach(date => {
             const dayOfWeek = date.getDay();
-            const horasConfiguradas = (state.configDias && state.configDias[dayOfWeek]) ? state.configDias[dayOfWeek] : [];
+            const horasConfiguradas = getHorasConfiguradas(date);
 
             if (horasConfiguradas.length === 0) return;
 
@@ -437,9 +1051,7 @@
             tdAcc.style.verticalAlign = 'top';
 
             horasConfiguradas.forEach((hora, idx) => {
-                const keyBase = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}_${hora}_${idx}`;
-                const turno = getTurnoPorHora(hora);
-
+                const keyBase = getKeyBase(date, hora, idx);
                 const isLast = idx === horasConfiguradas.length - 1;
                 const blockStyle = `display: flex; align-items: center; justify-content: center; min-height: 45px; padding: 5px; border-bottom: ${isLast ? 'none' : '1px solid var(--border, #ccc)'};`;
 
@@ -455,12 +1067,31 @@
                 const keyLugar = keyBase + '_lugar';
                 const selLugar = document.createElement('select');
                 selLugar.innerHTML = '<option value="">-- Seleccionar --</option>';
+                const assignedNames = Object.keys(state.manuales)
+                    .filter(key => key.startsWith(`${keyBase}_p`))
+                    .map(key => state.manuales[key]);
                 (state.lugares || []).forEach(l => {
-                    if (l) selLugar.innerHTML += `<option value="${l}" ${state.manuales[keyLugar] === l ? 'selected' : ''}>${l}</option>`;
+                    if (!l) return;
+                    const isAvailable = isLugarAvailable(l, dayOfWeek, hora);
+                    const isCompatible = assignedNames.every(name =>
+                        isParticipantAllowedWithCompanions(name, l, assignedNames)
+                    );
+                    const isCurrentLocation = state.manuales[keyLugar] === l;
+                    const option = document.createElement('option');
+                    option.value = l;
+                    option.textContent = !isAvailable
+                        ? `${l} (no disponible en este horario)`
+                        : !isCompatible
+                            ? `${l} (participantes no autorizados)`
+                            : l;
+                    option.disabled = (!isAvailable || !isCompatible) && !isCurrentLocation;
+                    option.selected = isCurrentLocation;
+                    selLugar.appendChild(option);
                 });
                 selLugar.onchange = (e) => {
                     state.manuales[keyLugar] = e.target.value;
                     saveToStorage();
+                    renderTabla();
                 };
                 divLugar.appendChild(selLugar);
                 tdLugar.appendChild(divLugar);
@@ -474,38 +1105,56 @@
                 selectContainer.style.flexDirection = 'column';
                 selectContainer.style.gap = '5px';
 
-                let slotsKeys = Object.keys(state.manuales).filter(k => k.startsWith(`${keyBase}_p`));
-                let maxSlot = 1;
-                if (slotsKeys.length > 0) {
-                    let indices = slotsKeys.map(k => parseInt(k.replace(`${keyBase}_p`, ''))).filter(n => !isNaN(n));
-                    if (indices.length > 0) maxSlot = Math.max(...indices);
-                }
-                if (maxSlot < 1) maxSlot = 1;
-
-                let currentSlotCount = maxSlot;
+                const currentSlotCount = 3;
 
                 const createSelect = (slotIndex) => {
                     const keyPart = `${keyBase}_p${slotIndex}`;
                     const selPart = document.createElement('select');
                     selPart.className = 'select-participante-row';
                     selPart.style.width = '100%';
+                    selPart.title = '⭐ indica un compañero preferido de otro participante asignado a esta salida';
                     selPart.innerHTML = '<option value="">-- Seleccionar --</option>';
 
                     const assignedName = state.manuales[keyPart];
+                    const namesAssignedToOtherSlots = new Set(Object.keys(state.manuales)
+                        .filter(key => key.startsWith(`${keyBase}_p`) && key !== keyPart)
+                        .map(key => state.manuales[key]));
+                    const otherAssignedNames = Object.keys(state.manuales)
+                        .filter(key => key.startsWith(`${keyBase}_p`) && key !== keyPart)
+                        .map(key => state.manuales[key]);
+                    const preferredCompanions = new Set(
+                        (state.participantes || [])
+                            .filter(participant => otherAssignedNames.some(name =>
+                                arePreferredCompanions(participant.name, name)
+                            ))
+                            .map(participant => participant.name)
+                    );
 
                     (state.participantes || []).forEach(p => {
                         if (!p || !p.name) return;
 
-                        let isAvailable = false;
-                        if (p.cartas) {
-                            isAvailable = true;
-                        } else if (p.disponibilidad && p.disponibilidad[dayOfWeek]) {
-                            isAvailable = turno === 'm' ? p.disponibilidad[dayOfWeek].m : p.disponibilidad[dayOfWeek].t;
-                        }
-
-                        if (isAvailable || p.name === assignedName) {
-                            selPart.innerHTML += `<option value="${p.name}" ${assignedName === p.name ? 'selected' : ''}>${p.name}</option>`;
-                        }
+                        const isAvailable = p.cartas || getParticipantAvailableForHour(p, dayOfWeek, hora);
+                        const isWithinLimit = isWithinMonthlyLimit(p, date, keyPart);
+                        const isAllowedAtLocation = isParticipantAllowedWithCompanions(
+                            p.name,
+                            state.manuales[keyLugar],
+                            otherAssignedNames
+                        );
+                        const isPreferredCompanion = preferredCompanions.has(p.name);
+                        const alreadyAssigned = namesAssignedToOtherSlots.has(p.name);
+                        const option = document.createElement('option');
+                        option.value = p.name;
+                        let status = '';
+                        if (alreadyAssigned) status = ' (ya asignado)';
+                        else if (!isAvailable) status = ' (no disponible)';
+                        else if (!isWithinLimit) status = ' (límite mensual alcanzado)';
+                        else if (!isAllowedAtLocation) status = ' (no autorizado para este lugar)';
+                        option.textContent = `${isPreferredCompanion ? '⭐ ' : ''}${p.conyuge ? '💍 ' : ''}${p.name}${status}`;
+                        if (isPreferredCompanion) option.title = 'Compañero preferido';
+                        option.disabled = (alreadyAssigned || !isAvailable || !isWithinLimit || !isAllowedAtLocation) &&
+                            p.name !== assignedName;
+                        option.selected = assignedName === p.name;
+                        selPart.appendChild(option);
                     });
 
                     selPart.onchange = (e) => {
@@ -515,6 +1164,7 @@
                             delete state.manuales[keyPart];
                         }
                         saveToStorage();
+                        renderTabla();
                     };
                     return selPart;
                 };
@@ -523,29 +1173,37 @@
                     selectContainer.appendChild(createSelect(slot));
                 }
 
-                const btnAddPart = document.createElement('button');
-                btnAddPart.textContent = '+ Agregar otro';
-                btnAddPart.style.fontSize = '0.75em';
-                btnAddPart.style.padding = '3px 6px';
-                btnAddPart.style.cursor = 'pointer';
-                btnAddPart.style.background = 'var(--bg-color, #e0e0e0)';
-                btnAddPart.style.border = '1px dashed var(--border, #999)';
-                btnAddPart.style.borderRadius = '3px';
-                btnAddPart.style.color = 'inherit';
-                btnAddPart.style.alignSelf = 'flex-start';
-
-                btnAddPart.onclick = () => {
-                    currentSlotCount++;
-                    selectContainer.appendChild(createSelect(currentSlotCount));
-                };
-
                 divPart.appendChild(selectContainer);
-                divPart.appendChild(btnAddPart);
                 tdPart.appendChild(divPart);
 
                 // Columna Acciones
                 const divAcc = document.createElement('div');
                 divAcc.style.cssText = blockStyle;
+                const btnAddSalida = document.createElement('button');
+                btnAddSalida.textContent = '➕';
+                btnAddSalida.title = 'Añadir otra salida este día';
+                btnAddSalida.setAttribute('aria-label', 'Añadir otra salida este día');
+                btnAddSalida.onclick = () => {
+                    const nuevaHora = prompt(`Horario para otra salida el ${formatFechaCompleta(date)}:`);
+                    if (nuevaHora === null || !nuevaHora.trim()) return;
+                    const horariosActuales = getHorasConfiguradas(date);
+                    updateFechaHorario(date, [...horariosActuales, nuevaHora.trim()]);
+                };
+
+                const btnEditarHorario = document.createElement('button');
+                btnEditarHorario.textContent = '✏️';
+                btnEditarHorario.title = 'Editar horario de esta salida';
+                btnEditarHorario.setAttribute('aria-label', 'Editar horario de esta salida');
+                btnEditarHorario.onclick = () => {
+                    const nuevaHora = prompt(`Editar horario para ${state.manuales[keyBase + '_lugar'] || 'este lugar'} el ${formatFechaCompleta(date)}:`, hora);
+                    if (nuevaHora === null || !nuevaHora.trim() || nuevaHora.trim() === hora) return;
+
+                    const horariosActuales = getHorasConfiguradas(date);
+                    const horariosActualizados = [...horariosActuales];
+                    horariosActualizados[idx] = nuevaHora.trim();
+                    updateFechaHorario(date, horariosActualizados, keyBase, getKeyBase(date, nuevaHora.trim(), idx));
+                };
+
                 const btnClearRow = document.createElement('button');
                 btnClearRow.textContent = '🗑️';
                 btnClearRow.style.background = 'transparent';
@@ -561,6 +1219,17 @@
                     saveToStorage();
                     renderTabla();
                 };
+                if (Object.prototype.hasOwnProperty.call(state.configFechas, getDateKey(date)) &&
+                    idx > 0) {
+                    const btnRemoveHorario = document.createElement('button');
+                    btnRemoveHorario.type = 'button';
+                    btnRemoveHorario.textContent = '−';
+                    btnRemoveHorario.title = 'Eliminar este horario de este día';
+                    btnRemoveHorario.setAttribute('aria-label', 'Eliminar este horario de este día');
+                    btnRemoveHorario.onclick = () => removeFechaHorario(date, idx);
+                    divAcc.appendChild(btnRemoveHorario);
+                }
+                divAcc.append(btnAddSalida, btnEditarHorario);
                 divAcc.appendChild(btnClearRow);
                 tdAcc.appendChild(divAcc);
             });
@@ -591,7 +1260,16 @@
                 lines.forEach(line => {
                     if (listName === 'participantes') {
                         if (!state.participantes.some(p => p.name === line)) {
-                            state.participantes.push({ name: line, disponibilidad: createDefaultDisp(), cartas: false });
+                            state.participantes.push({
+                                name: line,
+                                disponibilidad: createDefaultDisp(),
+                                cartas: false,
+                                horariosDisponibles: null,
+                                preferenciasLugares: [],
+                                preferenciasCompaneros: [],
+                                conyuge: '',
+                                maxSalidasMes: null
+                            });
                             agregados++;
                         }
                     } else {
@@ -612,10 +1290,13 @@
     }
 
     // --- ASIGNACIÓN INTELIGENTE ---
-    function autoAsignarParticipantes() {
-        if (!els.fInicio) return;
+    function autoAsignarParticipantes({ notify = true } = {}) {
+        if (!els.fInicio) return false;
         let start = parseFecha(els.fInicio.value);
-        if (!start) { alert('Selecciona una fecha de inicio primero.'); return; }
+        if (!start) {
+            if (notify) alert('Selecciona una fecha de inicio primero.');
+            return false;
+        }
 
         let totalDias = 30;
         if (els.cantidadFechas && els.cantidadFechas.value !== 'custom') {
@@ -632,7 +1313,7 @@
         state.participantes.forEach(p => { if (p && p.name) conteoAsignaciones[p.name] = 0; });
 
         Object.keys(state.manuales).forEach(k => {
-            if (k.includes('_p1') || k.includes('_p2')) {
+            if (/_p\d+$/.test(k)) {
                 const name = state.manuales[k];
                 if (name && conteoAsignaciones[name] !== undefined) {
                     conteoAsignaciones[name]++;
@@ -640,29 +1321,67 @@
             }
         });
 
+        autoAsignarLugares(start, totalDias);
+
         for (let i = 0; i < totalDias; i++) {
             let date = new Date(start);
             date.setDate(start.getDate() + i);
             const dayOfWeek = date.getDay();
-            const horasConfiguradas = (state.configDias && state.configDias[dayOfWeek]) ? state.configDias[dayOfWeek] : [];
+            const horasConfiguradas = getHorasConfiguradas(date);
 
             horasConfiguradas.forEach((hora, idx) => {
-                const keyBase = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}_${hora}_${idx}`;
+                const keyBase = getKeyBase(date, hora, idx);
                 const turno = getTurnoPorHora(hora);
-
-                for (let slot = 1; slot <= 2; slot++) {
+                for (let slot = 1; slot <= 3; slot++) {
                     const keyPart = `${keyBase}_p${slot}`;
                     if (state.manuales[keyPart]) continue;
+                    const selectedLocation = state.manuales[`${keyBase}_lugar`];
+                    const assignedNames = Object.keys(state.manuales)
+                        .filter(key => key.startsWith(`${keyBase}_p`) && key !== keyPart)
+                        .map(key => state.manuales[key]);
 
                     let candidatos = state.participantes.filter(p => {
                         if (!p) return false;
+                        if (isAssignedToAnotherOutingOnDate(p.name, date, keyBase)) return false;
+                        if (!isWithinMonthlyLimit(p, date)) return false;
+                        if (!isParticipantAllowedWithCompanions(p.name, selectedLocation, assignedNames)) return false;
                         if (p.cartas) return true;
-                        const dConfig = p.disponibilidad ? p.disponibilidad[dayOfWeek] : null;
-                        if (!dConfig) return false;
-                        return (turno === 'm' ? dConfig.m : dConfig.t);
+                        return getParticipantAvailableForHour(p, dayOfWeek, hora);
                     });
 
                     if (candidatos.length === 0) continue;
+
+                    const emptySlots = [1, 2, 3].filter(slot =>
+                        !state.manuales[`${keyBase}_p${slot}`]
+                    );
+                    const availableSpouses = candidatos.filter(candidate => {
+                        if (!candidate.conyuge || assignedNames.includes(candidate.conyuge) || emptySlots.length < 2) return false;
+                        const spouse = state.participantes.find(participant => participant.name === candidate.conyuge);
+                        return spouse &&
+                            !assignedNames.includes(spouse.name) &&
+                            !isAssignedToAnotherOutingOnDate(spouse.name, date, keyBase) &&
+                            isWithinMonthlyLimit(spouse, date) &&
+                            (spouse.cartas || getParticipantAvailableForHour(spouse, dayOfWeek, hora)) &&
+                            isParticipantAllowedWithCompanions(
+                                spouse.name,
+                                selectedLocation,
+                                [...assignedNames, candidate.name]
+                            );
+                    });
+                    availableSpouses.sort((a, b) =>
+                        getPreferredPairAssignmentCount(a.name, assignedNames, dayOfWeek, null, selectedLocation) -
+                        getPreferredPairAssignmentCount(b.name, assignedNames, dayOfWeek, null, selectedLocation) ||
+                        getPreferredPairAssignmentCount(a.name, assignedNames, dayOfWeek, hora, selectedLocation) -
+                        getPreferredPairAssignmentCount(b.name, assignedNames, dayOfWeek, hora, selectedLocation) ||
+                        getRotationTieRank(a.name, date, hora) - getRotationTieRank(b.name, date, hora) ||
+                        (conteoAsignaciones[a.name] || 0) - (conteoAsignaciones[b.name] || 0)
+                    );
+                    const availableMarriagePairs = new Set(
+                        availableSpouses.map(candidate => [candidate.name, candidate.conyuge].sort().join('|'))
+                    );
+                    const prioritizeSingle = assignedNames.length === 0 &&
+                        emptySlots.length === 3 &&
+                        availableMarriagePairs.size >= 2;
 
                     let conPrioridad = candidatos.filter(p => {
                         if (p.cartas) return true;
@@ -671,18 +1390,39 @@
                     });
 
                     let pool = conPrioridad.length > 0 ? conPrioridad : candidatos;
+                    pool = pool.filter(p => !assignedNames.includes(p.name));
+                    const preferredPool = pool.filter(candidate => assignedNames.some(assignedName => {
+                        return arePreferredCompanions(candidate.name, assignedName);
+                    }));
+                    if (preferredPool.length) pool = preferredPool;
 
-                    if (slot === 2) {
-                        const yaAsignadoP1 = state.manuales[`${keyBase}_p1`];
-                        pool = pool.filter(p => p.name !== yaAsignadoP1);
-                    }
-
-                    pool.sort((a, b) => (conteoAsignaciones[a.name] || 0) - (conteoAsignaciones[b.name] || 0));
-
-                    if (pool.length > 0) {
-                        const elegido = pool[0];
+                    pool.sort((a, b) =>
+                        getPreferredPairAssignmentCount(a.name, assignedNames, dayOfWeek, null, selectedLocation) -
+                        getPreferredPairAssignmentCount(b.name, assignedNames, dayOfWeek, null, selectedLocation) ||
+                        getPreferredPairAssignmentCount(a.name, assignedNames, dayOfWeek, hora, selectedLocation) -
+                        getPreferredPairAssignmentCount(b.name, assignedNames, dayOfWeek, hora, selectedLocation) ||
+                        getRotationTieRank(a.name, date, hora) - getRotationTieRank(b.name, date, hora) ||
+                        (conteoAsignaciones[a.name] || 0) - (conteoAsignaciones[b.name] || 0)
+                    );
+                    const singleCandidates = pool.filter(candidate => !candidate.conyuge);
+                    const elegido = prioritizeSingle && singleCandidates.length
+                        ? singleCandidates[0]
+                        : availableSpouses[0] ||
+                        pool.find(candidate => !candidate.conyuge ||
+                            assignedNames.includes(candidate.conyuge)) ||
+                        (emptySlots.length === 1 ? preferredPool[0] : null) ||
+                        pool.find(candidate => candidate.conyuge);
+                    if (elegido) {
                         state.manuales[keyPart] = elegido.name;
                         conteoAsignaciones[elegido.name] = (conteoAsignaciones[elegido.name] || 0) + 1;
+
+                        if (availableSpouses.includes(elegido)) {
+                            const spouseSlot = emptySlots.find(emptySlot => emptySlot !== slot);
+                            if (spouseSlot) {
+                                state.manuales[`${keyBase}_p${spouseSlot}`] = elegido.conyuge;
+                                conteoAsignaciones[elegido.conyuge] = (conteoAsignaciones[elegido.conyuge] || 0) + 1;
+                            }
+                        }
                     }
                 }
             });
@@ -690,12 +1430,94 @@
 
         saveToStorage();
         renderTabla();
-        alert('Asignación automatizada completada con éxito.');
+        if (notify) alert('Asignación automatizada completada con éxito.');
+        return true;
+    }
+
+    function autoAsignarLugares(start, totalDias) {
+        const generatedDates = new Set(
+            Array.from({ length: totalDias }, (_, index) => {
+                const date = new Date(start);
+                date.setDate(start.getDate() + index);
+                return getDateKey(date);
+            })
+        );
+        const locationUsage = new Map();
+        Object.entries(state.manuales).forEach(([key, location]) => {
+            const dateKey = key.slice(0, 10);
+            if (key.endsWith('_lugar') && generatedDates.has(dateKey) && location) {
+                locationUsage.set(location, (locationUsage.get(location) || 0) + 1);
+            }
+        });
+
+        for (let i = 0; i < totalDias; i++) {
+            const date = new Date(start);
+            date.setDate(start.getDate() + i);
+            const dayOfWeek = date.getDay();
+
+            getHorasConfiguradas(date).forEach((hour, index) => {
+                const keyBase = getKeyBase(date, hour, index);
+                const locationKey = `${keyBase}_lugar`;
+                if (state.manuales[locationKey]) return;
+
+                const assignedNames = Object.keys(state.manuales)
+                    .filter(key => key.startsWith(`${keyBase}_p`))
+                    .map(key => state.manuales[key]);
+                const assignedNameSet = new Set(assignedNames);
+                const availableLocations = state.lugares.filter(location =>
+                    location &&
+                    isLugarAvailable(location, dayOfWeek, hour) &&
+                    assignedNames.every(name =>
+                        isParticipantAllowedWithCompanions(name, location, assignedNames)
+                    )
+                ).map(location => {
+                    const availableParticipants = state.participantes.filter(participant =>
+                        participant &&
+                        !assignedNameSet.has(participant.name) &&
+                        isWithinMonthlyLimit(participant, date) &&
+                        isParticipantAllowedWithCompanions(participant.name, location, assignedNames) &&
+                        (participant.cartas || getParticipantAvailableForHour(participant, dayOfWeek, hour))
+                    );
+                    return {
+                        location,
+                        availableCount: assignedNames.length + availableParticipants.length,
+                        availableParticipants
+                    };
+                }).filter(option => option.availableCount > 0);
+                if (!availableLocations.length) return;
+
+                const preferredLocations = new Set(assignedNames.flatMap(name => {
+                    const participant = state.participantes.find(item => item.name === name);
+                    return participant ? participant.preferenciasLugares : [];
+                }).concat(availableLocations.flatMap(option =>
+                    option.availableParticipants.flatMap(participant => participant.preferenciasLugares)
+                )));
+                availableLocations.sort((a, b) =>
+                    (locationUsage.get(a.location) || 0) - (locationUsage.get(b.location) || 0) ||
+                    Number(preferredLocations.has(b.location)) - Number(preferredLocations.has(a.location)) ||
+                    b.availableCount - a.availableCount
+                );
+                const selectedLocation = availableLocations[0].location;
+                state.manuales[locationKey] = selectedLocation;
+                locationUsage.set(selectedLocation, (locationUsage.get(selectedLocation) || 0) + 1);
+            });
+        }
     }
 
     // --- CONFIGURACIÓN INICIAL ---
     function init() {
         loadFromStorage();
+        els.detailsParticipantsTab.addEventListener('click', () => setDetailsSection('participants'));
+        els.detailsPlacesTab.addEventListener('click', () => setDetailsSection('places'));
+        setDetailsSection(state.detailActiveSection);
+
+        const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
+        const applySystemTheme = event => {
+            document.body.dataset.theme = event.matches ? 'dark' : 'light';
+        };
+        applySystemTheme(colorScheme);
+        colorScheme.addEventListener('change', applySystemTheme);
+        localStorage.removeItem(KEYS.THEME);
 
         const savedInicio = localStorage.getItem(KEYS.FECHA_INICIO);
         const savedCantidad = localStorage.getItem(KEYS.CANTIDAD_FECHAS);
@@ -755,7 +1577,16 @@
                 if (!els.nuevoParticipante) return;
                 const n = els.nuevoParticipante.value.trim();
                 if (n && !state.participantes.some(p => p.name === n)) {
-                    state.participantes.push({ name: n, disponibilidad: createDefaultDisp(), cartas: false });
+                    state.participantes.push({
+                        name: n,
+                        disponibilidad: createDefaultDisp(),
+                        cartas: false,
+                        horariosDisponibles: null,
+                        preferenciasLugares: [],
+                        preferenciasCompaneros: [],
+                        conyuge: '',
+                        maxSalidasMes: null
+                    });
                     els.nuevoParticipante.value = '';
                     saveToStorage();
                     renderListas();
@@ -806,13 +1637,7 @@
         if (els.btnToggleTheme) {
             els.btnToggleTheme.onclick = () => {
                 const isDark = document.body.dataset.theme === 'dark';
-                if (isDark) {
-                    document.body.removeAttribute('data-theme');
-                    localStorage.setItem(KEYS.THEME, 'light');
-                } else {
-                    document.body.dataset.theme = 'dark';
-                    localStorage.setItem(KEYS.THEME, 'dark');
-                }
+                document.body.dataset.theme = isDark ? 'light' : 'dark';
             };
         }
 
@@ -824,9 +1649,13 @@
             els.btnAsignarParticipantes.onclick = autoAsignarParticipantes;
         }
 
+        if (els.btnGenerateProgram) {
+            els.btnGenerateProgram.onclick = () => autoAsignarParticipantes();
+        }
+
         if (els.btnLimpiarAsignaciones) {
             els.btnLimpiarAsignaciones.onclick = () => {
-                if (confirm('¿Deseas vaciar todas las celdas del cronograma actual?')) {
+                if (confirm('¿Deseas quitar todos los lugares y participantes asignados en la tabla? Se conservarán las fechas y horarios configurados.')) {
                     state.manuales = {};
                     saveToStorage();
                     renderTabla();
@@ -841,7 +1670,7 @@
         }
 
         // --- EXPORTACIÓN DE PDF OPTIMIZADA CON ROWSPAN POR DÍA ---
-        document.querySelectorAll('#btnExportPDF, .btn-export').forEach(btn => {
+        document.querySelectorAll('#btnExportPDF, .btn-export:not(#btnGenerateProgram)').forEach(btn => {
             btn.addEventListener('click', () => {
                 if (!window.jspdf) {
                     alert("La librería jsPDF no está cargada. Verifica tus etiquetas <script>.");
@@ -952,7 +1781,7 @@
         });
 
         renderListas();
-        renderDiasSelector();
+        renderHorariosGlobales();
     }
 
     init();
