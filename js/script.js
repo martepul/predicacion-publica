@@ -59,6 +59,9 @@
         fileLugares: document.getElementById('fileLugares'),
         fileGrupos: document.getElementById('fileGrupos'),
         btnToggleTheme: document.getElementById('btnToggleTheme'),
+        btnExportSave: document.getElementById('btnExportSave'),
+        btnImportSave: document.getElementById('btnImportSave'),
+        fileSave: document.getElementById('fileSave'),
         btnGenerateProgram: document.getElementById('btnGenerateProgram'),
         btnBloquearTodo: document.getElementById('btnBloquearTodo'),
         btnAsignarParticipantes: document.getElementById('btnAsignarParticipantes'),
@@ -194,6 +197,136 @@
         } catch (e) {
             console.error("Error al cargar localStorage:", e);
         }
+    }
+
+    function createSaveFile() {
+        saveToStorage();
+        const save = {
+            app: 'predicacion-publica',
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            data: {
+                participantes: state.participantes,
+                lugares: state.lugares,
+                grupos: state.grupos,
+                manuales: state.manuales,
+                configDias: state.configDias,
+                limiteHorariosDia: state.limiteHorariosDia,
+                configFechas: state.configFechas,
+                disponibilidadLugares: state.disponibilidadLugares,
+                participantesPorLugar: state.participantesPorLugar,
+                fechaInicio: els.fInicio.value,
+                cantidadFechas: els.cantidadFechas.value,
+                fechaFinal: els.fFinal.value
+            }
+        };
+        const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `predicacion-publica-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+
+    function isObject(value) {
+        return value !== null && typeof value === 'object' && !Array.isArray(value);
+    }
+
+    function isStringArray(value) {
+        return Array.isArray(value) && value.every(item => typeof item === 'string');
+    }
+
+    function isStringArrayMap(value) {
+        return isObject(value) && Object.values(value).every(isStringArray);
+    }
+
+    function isNestedStringArrayMap(value) {
+        return isObject(value) && Object.values(value).every(isStringArrayMap);
+    }
+
+    function validateSaveFile(save) {
+        if (!isObject(save) || save.app !== 'predicacion-publica' || save.version !== 1 || !isObject(save.data)) {
+            return false;
+        }
+
+        const data = save.data;
+        const participantsAreValid = Array.isArray(data.participantes) && data.participantes.every(participant =>
+            typeof participant === 'string' || (isObject(participant) && typeof participant.name === 'string')
+        );
+        const manualAssignmentsAreValid = isObject(data.manuales) &&
+            Object.values(data.manuales).every(value => typeof value === 'string');
+
+        return participantsAreValid &&
+            isStringArray(data.lugares) &&
+            isStringArray(data.grupos) &&
+            manualAssignmentsAreValid &&
+            isStringArrayMap(data.configDias) &&
+            Number.isSafeInteger(data.limiteHorariosDia) && data.limiteHorariosDia > 0 &&
+            isStringArrayMap(data.configFechas) &&
+            isNestedStringArrayMap(data.disponibilidadLugares) &&
+            isObject(data.participantesPorLugar) &&
+            Object.values(data.participantesPorLugar).every(isStringArray) &&
+            typeof data.fechaInicio === 'string' &&
+            ['custom', '7', '15', '30'].includes(data.cantidadFechas) &&
+            typeof data.fechaFinal === 'string';
+    }
+
+    async function loadSaveFile(file) {
+        let save;
+        try {
+            save = JSON.parse(await file.text());
+        } catch (error) {
+            console.error('No se pudo leer el archivo de guardado:', error);
+            alert('No se pudo leer el archivo. Comprueba que sea un archivo JSON válido.');
+            return;
+        }
+
+        if (!validateSaveFile(save)) {
+            alert('El archivo no es un guardado válido de Predicación Pública o no es compatible.');
+            return;
+        }
+
+        if (!confirm('Cargar este guardado reemplazará los datos de esta computadora. ¿Deseas continuar?')) {
+            return;
+        }
+
+        const data = save.data;
+        const storageValues = {
+            [KEYS.PARTICIPANTES]: JSON.stringify(data.participantes),
+            [KEYS.LUGARES]: JSON.stringify(data.lugares),
+            [KEYS.GRUPOS]: JSON.stringify(data.grupos),
+            [KEYS.MANUALES]: JSON.stringify(data.manuales),
+            [KEYS.CONFIG_DIAS]: JSON.stringify(data.configDias),
+            [KEYS.LIMITE_HORARIOS_DIA]: String(data.limiteHorariosDia),
+            [KEYS.CONFIG_FECHAS]: JSON.stringify(data.configFechas),
+            [KEYS.DISPONIBILIDAD_LUGARES]: JSON.stringify(data.disponibilidadLugares),
+            [KEYS.PARTICIPANTES_POR_LUGAR]: JSON.stringify(data.participantesPorLugar),
+            [KEYS.FECHA_INICIO]: data.fechaInicio,
+            [KEYS.CANTIDAD_FECHAS]: data.cantidadFechas,
+            [KEYS.FECHA_FINAL]: data.fechaFinal
+        };
+        const previousValues = Object.keys(storageValues).map(key => [key, localStorage.getItem(key)]);
+
+        try {
+            Object.entries(storageValues).forEach(([key, value]) => localStorage.setItem(key, value));
+        } catch (error) {
+            console.error('No se pudo guardar la sesión importada:', error);
+            try {
+                previousValues.forEach(([key, value]) => {
+                    if (value === null) localStorage.removeItem(key);
+                    else localStorage.setItem(key, value);
+                });
+                alert('No se pudo cargar el guardado. Comprueba el espacio disponible en el navegador e inténtalo de nuevo.');
+            } catch (rollbackError) {
+                console.error('No se pudo restaurar el estado anterior:', rollbackError);
+                alert('Ocurrió un error al cargar el guardado y el estado anterior no pudo restaurarse completamente.');
+            }
+            return;
+        }
+
+        window.location.reload();
     }
 
     // --- QUITAR ELEMENTOS DE LISTA ---
@@ -1638,6 +1771,26 @@
             els.btnToggleTheme.onclick = () => {
                 const isDark = document.body.dataset.theme === 'dark';
                 document.body.dataset.theme = isDark ? 'light' : 'dark';
+            };
+        }
+
+        if (els.btnExportSave) {
+            els.btnExportSave.onclick = () => {
+                try {
+                    createSaveFile();
+                } catch (error) {
+                    console.error('No se pudo crear el archivo de guardado:', error);
+                    alert('No se pudo crear el archivo de guardado.');
+                }
+            };
+        }
+
+        if (els.btnImportSave && els.fileSave) {
+            els.btnImportSave.onclick = () => els.fileSave.click();
+            els.fileSave.onchange = async () => {
+                const [file] = els.fileSave.files || [];
+                if (file) await loadSaveFile(file);
+                els.fileSave.value = '';
             };
         }
 
