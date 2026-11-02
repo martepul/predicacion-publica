@@ -22,7 +22,7 @@
             <input id="fileSave" type="file" accept=".json,application/json" hidden>
             <button id="btnToggleTheme">🌓 Modo</button>
             <button id="btnBloquearTodo">🔒 Bloquear Todo</button>
-            <button id="toggleSidebar">
+            <button id="toggleSidebar" type="button" aria-controls="managementSidebar" aria-expanded="true">
                 <span id="sidebarIcon" class="icon">⬅️</span>
                 <span id="sidebarText" class="text">Ocultar Panel</span>
             </button>
@@ -105,7 +105,7 @@
             </section>
         </aside>
 
-        <aside class="sidebar">
+        <aside id="managementSidebar" class="sidebar">
             <div class="control-group">
                 <button class="btn-export">📄 DESCARGAR PDF</button>
                 <small style="color: #666; font-size: 0.8em;">*Para que el pdf refleje el mes deseado asegurese de
