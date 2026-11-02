@@ -5,6 +5,7 @@
         LUGARES: 'lugares_v1',
         GRUPOS: 'grupos_v1',
         MANUALES: 'manuales_v9',
+        COMENTARIOS: 'comentarios_v1',
         CONFIG_DIAS: 'config_dias_v3',
         LIMITE_HORARIOS_DIA: 'limite_horarios_dia_v1',
         CONFIG_FECHAS: 'config_fechas_v1',
@@ -24,6 +25,7 @@
         lugares: [],
         grupos: [],
         manuales: {},
+        comentarios: {},
         configDias: {
             0: [], 1: ['7:00-9:00 am'], 2: ['7:00-9:00 am'], 3: ['7:00-9:00 am'],
             4: ['7:00-9:00 am'], 5: ['7:00-9:00 am'], 6: ['7:00-9:00 am']
@@ -112,6 +114,7 @@
         localStorage.setItem(KEYS.LUGARES, JSON.stringify(state.lugares));
         localStorage.setItem(KEYS.GRUPOS, JSON.stringify(state.grupos));
         localStorage.setItem(KEYS.MANUALES, JSON.stringify(state.manuales));
+        localStorage.setItem(KEYS.COMENTARIOS, JSON.stringify(state.comentarios));
         localStorage.setItem(KEYS.CONFIG_DIAS, JSON.stringify(state.configDias));
         localStorage.setItem(KEYS.LIMITE_HORARIOS_DIA, String(state.limiteHorariosDia));
         localStorage.setItem(KEYS.CONFIG_FECHAS, JSON.stringify(state.configFechas));
@@ -159,6 +162,7 @@
             state.lugares = JSON.parse(localStorage.getItem(KEYS.LUGARES)) || [];
             state.grupos = JSON.parse(localStorage.getItem(KEYS.GRUPOS)) || [];
             state.manuales = JSON.parse(localStorage.getItem(KEYS.MANUALES)) || {};
+            state.comentarios = sanitizeComentarios(JSON.parse(localStorage.getItem(KEYS.COMENTARIOS)));
 
             const savedDias = JSON.parse(localStorage.getItem(KEYS.CONFIG_DIAS));
             if (savedDias) state.configDias = savedDias;
@@ -210,6 +214,7 @@
                 lugares: state.lugares,
                 grupos: state.grupos,
                 manuales: state.manuales,
+                comentarios: state.comentarios,
                 configDias: state.configDias,
                 limiteHorariosDia: state.limiteHorariosDia,
                 configFechas: state.configFechas,
@@ -242,6 +247,17 @@
         return isObject(value) && Object.values(value).every(isStringArray);
     }
 
+    function isStringMap(value) {
+        return isObject(value) && Object.values(value).every(item => typeof item === 'string');
+    }
+
+    function sanitizeComentarios(comentarios) {
+        if (!isStringMap(comentarios)) return {};
+        return Object.fromEntries(
+            Object.entries(comentarios).filter(([, comentario]) => comentario.trim())
+        );
+    }
+
     function isNestedStringArrayMap(value) {
         return isObject(value) && Object.values(value).every(isStringArrayMap);
     }
@@ -257,6 +273,8 @@
         );
         const manualAssignmentsAreValid = isObject(data.manuales) &&
             Object.values(data.manuales).every(value => typeof value === 'string');
+        const commentsAreValid = !Object.prototype.hasOwnProperty.call(data, 'comentarios') ||
+            isStringMap(data.comentarios);
 
         return participantsAreValid &&
             isStringArray(data.lugares) &&
@@ -268,6 +286,7 @@
             isNestedStringArrayMap(data.disponibilidadLugares) &&
             isObject(data.participantesPorLugar) &&
             Object.values(data.participantesPorLugar).every(isStringArray) &&
+            commentsAreValid &&
             typeof data.fechaInicio === 'string' &&
             ['custom', '7', '15', '30'].includes(data.cantidadFechas) &&
             typeof data.fechaFinal === 'string';
@@ -298,6 +317,7 @@
             [KEYS.LUGARES]: JSON.stringify(data.lugares),
             [KEYS.GRUPOS]: JSON.stringify(data.grupos),
             [KEYS.MANUALES]: JSON.stringify(data.manuales),
+            [KEYS.COMENTARIOS]: JSON.stringify(sanitizeComentarios(data.comentarios)),
             [KEYS.CONFIG_DIAS]: JSON.stringify(data.configDias),
             [KEYS.LIMITE_HORARIOS_DIA]: String(data.limiteHorariosDia),
             [KEYS.CONFIG_FECHAS]: JSON.stringify(data.configFechas),
@@ -1162,6 +1182,36 @@
 
             if (horasConfiguradas.length === 0) return;
 
+            const dateKey = getDateKey(date);
+            const comentario = state.comentarios[dateKey];
+            if (comentario) {
+                const noteRow = document.createElement('tr');
+                noteRow.className = 'comment-row';
+                const noteCell = document.createElement('td');
+                noteCell.colSpan = 5;
+                noteCell.className = 'comment-cell';
+                const noteText = document.createElement('span');
+                noteText.className = 'comment-text';
+                noteText.textContent = comentario.toLocaleUpperCase('es-ES');
+                noteCell.appendChild(noteText);
+                const deleteButton = document.createElement('button');
+                deleteButton.type = 'button';
+                deleteButton.className = 'btn-delete-note';
+                deleteButton.textContent = '×';
+                deleteButton.title = 'Eliminar nota';
+                deleteButton.setAttribute('aria-label', 'Eliminar nota');
+                deleteButton.onclick = () => {
+                    if (confirm('¿Eliminar esta nota?')) {
+                        delete state.comentarios[dateKey];
+                        saveToStorage();
+                        renderTabla();
+                    }
+                };
+                noteCell.appendChild(deleteButton);
+                noteRow.appendChild(noteCell);
+                els.tablaBody.appendChild(noteRow);
+            }
+
             const tr = document.createElement('tr');
 
             const tdDia = document.createElement('td');
@@ -1312,6 +1362,24 @@
                 // Columna Acciones
                 const divAcc = document.createElement('div');
                 divAcc.style.cssText = blockStyle;
+                if (idx === 0) {
+                    const btnNote = document.createElement('button');
+                    btnNote.type = 'button';
+                    btnNote.className = 'btn-note';
+                    btnNote.textContent = '📝';
+                    btnNote.title = 'Añadir o editar nota de este día';
+                    btnNote.setAttribute('aria-label', 'Añadir o editar nota de este día');
+                    btnNote.onclick = () => {
+                        const nota = prompt('Nota:', state.comentarios[dateKey] || '');
+                        if (nota === null) return;
+                        const texto = nota.trim();
+                        if (texto) state.comentarios[dateKey] = texto;
+                        else delete state.comentarios[dateKey];
+                        saveToStorage();
+                        renderTabla();
+                    };
+                    divAcc.appendChild(btnNote);
+                }
                 const btnAddSalida = document.createElement('button');
                 btnAddSalida.textContent = '➕';
                 btnAddSalida.title = 'Añadir otra salida este día';
@@ -1817,12 +1885,39 @@
         }
 
         if (els.toggleSidebar && els.layout) {
-            els.toggleSidebar.onclick = () => {
-                els.layout.classList.toggle('sidebar-hidden');
+            const mobileLayout = window.matchMedia('(max-width: 850px)');
+            const updateSidebarButton = isOpen => {
+                els.toggleSidebar.setAttribute('aria-expanded', String(isOpen));
+                if (!mobileLayout.matches) return;
+                const sidebarText = document.getElementById('sidebarText');
+                const sidebarIcon = document.getElementById('sidebarIcon');
+                if (sidebarText) sidebarText.textContent = isOpen ? 'Cerrar gestión' : 'Abrir gestión';
+                if (sidebarIcon) sidebarIcon.textContent = isOpen ? '✕' : '☰';
             };
+            if (mobileLayout.matches) {
+                els.layout.classList.add('sidebar-hidden');
+                updateSidebarButton(false);
+            }
+
+            els.toggleSidebar.onclick = () => {
+                const isOpening = els.layout.classList.contains('sidebar-hidden');
+                els.layout.classList.toggle('sidebar-hidden', !isOpening);
+                updateSidebarButton(isOpening);
+            };
+
+            const closeMobileSidebar = () => {
+                if (!mobileLayout.matches || els.layout.classList.contains('sidebar-hidden')) return;
+                els.layout.classList.add('sidebar-hidden');
+                updateSidebarButton(false);
+            };
+            const sidebarOverlay = document.getElementById('sidebarOverlay');
+            if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeMobileSidebar);
+            document.addEventListener('keydown', event => {
+                if (event.key === 'Escape') closeMobileSidebar();
+            });
         }
 
-        // --- EXPORTACIÓN DE PDF OPTIMIZADA CON ROWSPAN POR DÍA ---
+        // --- EXPORTACIÓN DE PDF ---
         document.querySelectorAll('#btnExportPDF, .btn-export:not(#btnGenerateProgram)').forEach(btn => {
             btn.addEventListener('click', () => {
                 if (!window.jspdf) {
@@ -1832,20 +1927,32 @@
 
                 try {
                     const { jsPDF } = window.jspdf;
-                    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
-
-                    // Título centrado y en mayúsculas
-                    doc.setFont("helvetica", "bold");
-                    doc.setFontSize(14);
-                    doc.setTextColor(44, 62, 80);
-                    const titleText = "PROGRAMA DE PREDICACIÓN PÚBLICA";
-                    const pageWidth = doc.internal.pageSize.getWidth();
-                    doc.text(titleText, pageWidth / 2, 12, { align: 'center' });
+                    const fechaInicio = els.fInicio ? parseFecha(els.fInicio.value) : null;
+                    const mes = fechaInicio
+                        ? fechaInicio.toLocaleDateString('es-ES', { month: 'long' }).toLocaleUpperCase('es-ES')
+                        : '';
+                    const titleText = `PROGRAMA PREDICACIÓN PÚBLICA${mes ? ` (${mes})` : ''}`;
 
                     const bodyData = [];
                     const filas = document.querySelectorAll('#cuerpoTabla tr');
 
                     filas.forEach(tr => {
+                        if (tr.classList.contains('comment-row')) {
+                            const noteText = tr.querySelector('.comment-text')?.textContent;
+                            if (noteText) {
+                                bodyData.push([{
+                                    content: noteText,
+                                    colSpan: 6,
+                                    styles: {
+                                        fillColor: [255, 249, 196],
+                                        fontStyle: 'bolditalic',
+                                        halign: 'center'
+                                    }
+                                }]);
+                            }
+                            return;
+                        }
+
                         const tds = tr.querySelectorAll('td');
                         if (tds.length < 4) return;
 
@@ -1857,7 +1964,23 @@
                         const totalTurnos = divHoras.length;
                         if (totalTurnos === 0) return;
 
-                        // Recorremos los turnos de este día e insertamos filas separadas
+                        const nombreDia = dia.split(/\s+/)[0];
+                        const diaSemana = DIAS_SEMANA.findIndex(nombre =>
+                            nombre.toLocaleLowerCase('es-ES') === nombreDia.toLocaleLowerCase('es-ES')
+                        );
+                        const diasColores = [
+                            [224, 214, 235],
+                            [255, 242, 204],
+                            [224, 236, 218],
+                            [219, 236, 222],
+                            [214, 229, 244],
+                            [250, 225, 207],
+                            [226, 226, 226]
+                        ];
+                        const fillColor = diasColores[diaSemana] || [255, 255, 255];
+                        const styledCell = content => ({ content, styles: { fillColor } });
+                        const diaCorto = dia.replace(/^(\S+)\s+(\d{1,2})\/\d{1,2}$/, '$1 $2');
+
                         for (let i = 0; i < totalTurnos; i++) {
                             const hora = divHoras[i].textContent.trim() || '---';
 
@@ -1865,63 +1988,93 @@
                             const lugar = (selLugar && selLugar.value) ? selLugar.value : '---';
 
                             const selectsPart = divParts[i] ? divParts[i].querySelectorAll('select') : [];
-                            const seleccionados = Array.from(selectsPart)
-                                .map(s => s.value)
-                                .filter(v => v !== "");
-
-                            // Separador con guion
-                            const participantes = seleccionados.length > 0 ? seleccionados.join(' - ') : '---';
+                            const participantes = Array.from(selectsPart)
+                                .slice(0, 3)
+                                .map(select => select.value || '');
+                            while (participantes.length < 3) participantes.push('');
 
                             if (i === 0) {
-                                // La primera fila del día incluye la celda con rowSpan para agrupar visualmente el día
                                 bodyData.push([
-                                    { content: dia, rowSpan: totalTurnos, styles: { valign: 'middle', halign: 'center' } },
-                                    hora,
-                                    lugar,
-                                    participantes
+                                    {
+                                        content: diaCorto,
+                                        rowSpan: totalTurnos,
+                                        styles: { fillColor, valign: 'middle', halign: 'center', fontStyle: 'bold' }
+                                    },
+                                    styledCell(hora),
+                                    styledCell(lugar),
+                                    ...participantes.map(styledCell)
                                 ]);
                             } else {
-                                // Las siguientes filas del mismo día omiten la columna 'Día' para que se expanda el rowSpan
                                 bodyData.push([
-                                    hora,
-                                    lugar,
-                                    participantes
+                                    styledCell(hora),
+                                    styledCell(lugar),
+                                    ...participantes.map(styledCell)
                                 ]);
                             }
                         }
                     });
 
-                    doc.autoTable({
-                        head: [['Día', 'Hora', 'Lugar', 'Participantes']],
-                        body: bodyData,
-                        startY: 18,
-                        margin: { top: 15, bottom: 10, left: 12, right: 12 },
-                        theme: 'grid',
-                        styles: {
-                            valign: 'middle',
-                            halign: 'center',
-                            fontSize: 8.5,
-                            cellPadding: 1.5, // Tamaño compacto
-                            font: 'helvetica',
-                            fontStyle: 'bold', // Todo el texto interno en Negrita
-                            lineColor: [220, 224, 230],
-                            lineWidth: 0.1
-                        },
-                        headStyles: {
-                            fillColor: [52, 73, 94],
-                            textColor: [255, 255, 255],
-                            fontSize: 9,
-                            fontStyle: 'bold',
-                            halign: 'center'
-                        },
-                        alternateRowStyles: { fillColor: [248, 249, 250] },
-                        columnStyles: {
-                            0: { fontStyle: 'bold', cellWidth: 32 },
-                            1: { cellWidth: 25 },
-                            2: { cellWidth: 45 },
-                            3: { halign: 'center' }
-                        }
-                    });
+                    let doc;
+                    let fontSize = 7;
+                    let fitsOnOnePage = false;
+                    while (fontSize >= 0.5) {
+                        doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+                        doc.autoTable({
+                            head: [
+                                [{
+                                    content: titleText,
+                                    colSpan: 6,
+                                    styles: {
+                                        fillColor: [255, 255, 255],
+                                        textColor: [25, 25, 25],
+                                        fontSize: Math.max(1, fontSize + 2),
+                                        fontStyle: 'bold',
+                                        halign: 'center'
+                                    }
+                                }],
+                                ['DÍA', 'HORA', 'LUGAR', { content: 'PARTICIPANTES', colSpan: 3 }]
+                            ],
+                            body: bodyData,
+                            margin: { top: 8, bottom: 8, left: 6, right: 6 },
+                            theme: 'grid',
+                            styles: {
+                                valign: 'middle',
+                                halign: 'center',
+                                fontSize,
+                                cellPadding: Math.max(0.1, fontSize * 0.14),
+                                font: 'helvetica',
+                                fontStyle: 'bold',
+                                lineColor: [75, 75, 75],
+                                lineWidth: 0.15,
+                                overflow: 'linebreak',
+                                minCellHeight: 0
+                            },
+                            headStyles: {
+                                fillColor: [255, 255, 255],
+                                textColor: [25, 25, 25],
+                                fontSize: Math.max(1, fontSize + 0.5),
+                                fontStyle: 'bold',
+                                halign: 'center',
+                                lineColor: [75, 75, 75],
+                                lineWidth: 0.2
+                            },
+                            columnStyles: {
+                                0: { fontStyle: 'bold', cellWidth: 25 },
+                                1: { fontStyle: 'bold', cellWidth: 31 },
+                                2: { fontStyle: 'bold', cellWidth: 44 },
+                                3: { fontStyle: 'bold', cellWidth: 34 },
+                                4: { fontStyle: 'bold', cellWidth: 34 },
+                                5: { fontStyle: 'bold', cellWidth: 34 }
+                            }
+                        });
+
+                        const pageHeight = doc.internal.pageSize.getHeight();
+                        const lastTable = doc.lastAutoTable;
+                        fitsOnOnePage = doc.internal.getNumberOfPages() === 1 &&
+                            lastTable.finalY <= pageHeight - 8;
+                        if (fitsOnOnePage) break;
+                        fontSize = Math.round((fontSize - 0.5) * 10) / 10;
+                    }
 
                     const nombreArchivo = els.fInicio && els.fInicio.value ? els.fInicio.value : 'Publica';
                     doc.save(`Programa_${nombreArchivo}.pdf`);
