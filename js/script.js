@@ -1,6 +1,21 @@
 (function () {
     // --- CLAVES DE LOCALSTORAGE ---
-    const KEYS = {
+    function createScopedStorageKeys(keys, namespace) {
+        return Object.fromEntries(Object.entries(keys).map(([name, legacyKey]) => {
+            const scopedKey = `${namespace}${legacyKey}`;
+            try {
+                if (localStorage.getItem(scopedKey) === null) {
+                    const legacyValue = localStorage.getItem(legacyKey);
+                    if (legacyValue !== null) localStorage.setItem(scopedKey, legacyValue);
+                }
+            } catch (error) {
+                console.error(`No se pudo migrar la clave de almacenamiento "${legacyKey}".`, error);
+            }
+            return [name, scopedKey];
+        }));
+    }
+
+    const KEYS = createScopedStorageKeys({
         PARTICIPANTES: 'participantes_v1',
         LUGARES: 'lugares_v1',
         GRUPOS: 'grupos_v1',
@@ -15,7 +30,7 @@
         FECHA_INICIO: 'fecha_inicio_v1',
         CANTIDAD_FECHAS: 'cantidad_fechas_v1',
         FECHA_FINAL: 'fecha_final_v1'
-    };
+    }, 'predicacion-publica:');
 
     const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
