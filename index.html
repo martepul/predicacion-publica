@@ -9,22 +9,25 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
 
 <body>
 
     <div class="header-flex">
-        <h1 class="header-title">📋 cronograma de Predicación Pública</h1>
+        <h1 class="header-title">Cronograma de predicación pública</h1>
         <div id="header-actions">
             <button id="btnExportSave" type="button">💾 Guardar sesión</button>
             <button id="btnImportSave" type="button">📂 Cargar sesión</button>
             <input id="fileSave" type="file" accept=".json,application/json" hidden>
-            <button id="btnToggleTheme">🌓 Modo</button>
-            <button id="btnBloquearTodo">🔒 Bloquear Todo</button>
+            <button id="btnToggleTheme" type="button">🌓 Tema</button>
+            <button id="btnBloquearTodo">🔒 Bloquear todo</button>
             <button id="toggleSidebar" type="button" aria-controls="managementSidebar" aria-expanded="true">
                 <span id="sidebarIcon" class="icon">⬅️</span>
-                <span id="sidebarText" class="text">Ocultar Panel</span>
+                <span id="sidebarText" class="text">Ocultar panel</span>
             </button>
         </div>
     </div>
@@ -33,11 +36,11 @@
         <h2 id="dateRangeTitle">Rango de fechas</h2>
         <div class="date-range-controls">
             <label for="fechaInicio">
-                Fecha Inicio
+                Fecha inicio
                 <input type="date" id="fechaInicio">
             </label>
             <label for="fechaFinal">
-                Fecha Final
+                Fecha final
                 <input type="date" id="fechaFinal">
             </label>
             <label for="cantidadFechas">
@@ -50,7 +53,7 @@
                 </select>
             </label>
             <label for="inicioSemanaSelect">
-                Inicio de Semana
+                Inicio de semana
                 <select id="inicioSemanaSelect">
                     <option value="1" selected>Lunes</option>
                     <option value="0">Domingo</option>
@@ -63,24 +66,24 @@
         <div id="sidebarOverlay" class="sidebar-overlay"></div>
         <div class="content-area">
             <div class="table-actions">
-                <button id="btnGenerateProgram" class="btn-export">✨ GENERAR PROGRAMA AUTOMÁTICO</button>
-                <button id="btnLimpiarAsignaciones" class="btn-clear-table" type="button">🧹 LIMPIAR TODA LA TABLA</button>
+                <button id="btnGenerateProgram" class="btn-export">✨ Generar programa automático</button>
+                <button id="btnLimpiarAsignaciones" class="btn-clear-table" type="button">🧹 Limpiar toda la tabla</button>
             </div>
             <div class="table-container">
                 <table id="tablaAsignaciones">
                     <thead>
                         <tr id="headerRow">
-                            <th>DÍA</th>
-                            <th>HORA</th>
-                            <th>LUGAR</th>
-                            <th>PARTICIPANTES</th>
+                            <th>Día</th>
+                            <th>Hora</th>
+                            <th>Lugar</th>
+                            <th>Participantes</th>
                             <th class="th-actions">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="cuerpoTabla"></tbody>
                 </table>
             </div>
-            <button id="btnExportPDF" class="btn-export">📄 DESCARGAR PDF</button>
+            <button id="btnExportPDF" class="btn-export">📄 Descargar PDF</button>
         </div>
 
         <aside id="detailsSidebar" class="details-sidebar">
@@ -106,9 +109,14 @@
         </aside>
 
         <aside id="managementSidebar" class="sidebar">
+            <div class="drawer-head">
+                <strong>Gestión</strong>
+                <button type="button" aria-label="Cerrar panel de gestión"
+                    onclick="document.getElementById('toggleSidebar').click()">✕</button>
+            </div>
             <div class="control-group">
-                <button class="btn-export">📄 DESCARGAR PDF</button>
-                <small style="color: #666; font-size: 0.8em;">*Para que el pdf refleje el mes deseado asegurese de
+                <button class="btn-export">📄 Descargar PDF</button>
+                <small class="hint">*Para que el PDF refleje el mes deseado, asegúrate de
                     seleccionar un rango de fechas dentro del mes.</small>
                 <div class="con_cl" style="display:none;">
                     <h3 class="t_s">Columnas</h3>
@@ -116,10 +124,10 @@
                     </div>
                 </div>
 
-                <div class="cn_hs">
-                    <h3 class="t_s">Horarios globales</h3>
+                <details class="cn_hs">
+                    <summary class="t_s">Horarios globales</summary>
                     <div id="horariosGlobalesContainer"></div>
-                </div>
+                </details>
             </div>
 
             <div id="gestionContainer">
@@ -157,13 +165,12 @@
 
                 <div id="gruposPane" class="tab-pane">
                     <h3>Gestionar Grupos</h3>
-                    <small style="display:block; margin-bottom:5px; color:#666;">Acepta rangos (ej: 1-10) or nombres
+                    <small class="hint">Acepta rangos (ej: 1-10) o nombres
                         simples.</small>
                     <input type="text" id="nuevoGrupoNombre" placeholder="Ej: Grupo 1 o 1-50...">
                     <button id="btnAgregarGrupo">+ Añadir</button>
-                    <div style="margin-top:5px; display:flex; gap:5px;">
-                        <button id="btnLimpiarGrupos" style="font-size:0.8em; width:auto; padding:5px;">Borrar
-                            Todos</button>
+                    <div class="row-tools">
+                        <button id="btnLimpiarGrupos">Borrar todos</button>
                     </div>
                     <ul id="listaGrupos" class="participant-list"></ul>
                 </div>
