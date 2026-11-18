@@ -1,6 +1,6 @@
 // Service worker: primero red (así ves los cambios que subes a GitHub),
 // y si no hay conexión, usa la copia guardada.
-const CACHE = 'cronograma-v1';
+const CACHE = 'cronograma-v2';
 const PRECARGA = [
   './',
   './index.html',
