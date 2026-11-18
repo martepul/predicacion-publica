@@ -410,14 +410,9 @@
 
             const configBtn = document.createElement('button');
             configBtn.textContent = '⚙️';
-            configBtn.title = 'Editar disponibilidad y preferencias en la barra lateral';
-            configBtn.setAttribute('aria-label', configBtn.title);
-            configBtn.onclick = () => {
-                state.detailSelectedParticipant = item.name;
-                setDetailsSection('participants');
-                renderDetailsSidebar();
-                els.detailsSidebar.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            };
+            configBtn.title = 'Editar disponibilidad y preferencias';
+            configBtn.setAttribute('aria-label', `Editar a ${item.name}`);
+            configBtn.onclick = () => openParticipantModal(item.name);
 
             const delBtn = document.createElement('button');
             delBtn.textContent = '×';
@@ -456,7 +451,27 @@
         if (els.listaLugares) {
             els.listaLugares.innerHTML = '';
             (state.lugares || []).sort().forEach((l, i) => {
-                if (l) els.listaLugares.innerHTML += `<li class="participant-item"><span>${l}</span><button onclick="window.removeListItem('lugares', ${i})">×</button></li>`;
+                if (!l) return;
+                const li = document.createElement('li');
+                li.className = 'participant-item';
+                const nameEl = document.createElement('span');
+                nameEl.textContent = l;
+                const actions = document.createElement('div');
+                actions.className = 'participant-item-actions';
+                const gear = document.createElement('button');
+                gear.type = 'button';
+                gear.textContent = '⚙️';
+                gear.title = 'Editar horarios y participantes de este lugar';
+                gear.setAttribute('aria-label', `Editar ${l}`);
+                gear.onclick = () => openPlaceModal(l);
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.textContent = '×';
+                del.setAttribute('aria-label', `Eliminar ${l}`);
+                del.onclick = () => window.removeListItem('lugares', i);
+                actions.append(gear, del);
+                li.append(nameEl, actions);
+                els.listaLugares.appendChild(li);
             });
         }
 
@@ -499,16 +514,7 @@
         return section;
     }
 
-    function setDetailsSection(section) {
-        state.detailActiveSection = section === 'places' ? 'places' : 'participants';
-        const showParticipants = state.detailActiveSection === 'participants';
-        els.detailsParticipantsPane.hidden = !showParticipants;
-        els.detailsPlacesPane.hidden = showParticipants;
-        els.detailsParticipantsTab.classList.toggle('active', showParticipants);
-        els.detailsPlacesTab.classList.toggle('active', !showParticipants);
-        els.detailsParticipantsTab.setAttribute('aria-selected', String(showParticipants));
-        els.detailsPlacesTab.setAttribute('aria-selected', String(!showParticipants));
-    }
+    function setDetailsSection() {}
 
     function createDetailsCheckbox(labelText, checked, onChange) {
         const label = document.createElement('label');
@@ -587,223 +593,68 @@
             ));
     }
 
-    function renderDetailsSidebar() {
-        if (!els.detailsSidebar) return;
-
-        const participants = state.participantes.filter(participant => participant && participant.name)
-            .sort((a, b) => a.name.localeCompare(b.name));
-        const places = (state.lugares || []).filter(Boolean).slice().sort((a, b) => a.localeCompare(b));
-
-        if (!participants.some(participant => participant.name === state.detailSelectedParticipant)) {
-            state.detailSelectedParticipant = participants[0]?.name || '';
+    function renderParticipantDetails(container, participant, participants, places) {
+        container.replaceChildren();
+        const marriageSection = createDetailsSection('Matrimonio');
+        const spouseSelect = document.createElement('select');
+        spouseSelect.setAttribute('aria-label', 'Cónyuge');
+        const noSpouseOption = document.createElement('option');
+        noSpouseOption.value = '';
+        noSpouseOption.textContent = 'Sin cónyuge';
+        spouseSelect.appendChild(noSpouseOption);
+        participants.filter(item => item.name !== participant.name).forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.name;
+            option.textContent = item.name;
+            spouseSelect.appendChild(option);
+        });
+        spouseSelect.value = participant.conyuge;
+        spouseSelect.onchange = event => {
+            setSpouse(participant, event.target.value);
+            saveToStorage();
+            renderListas();
+            renderCardModal();
+        };
+        marriageSection.appendChild(spouseSelect);
+        if (participant.conyuge) {
+            const marriageLabel = document.createElement('small');
+            marriageLabel.textContent = `💍 Matrimonio con ${participant.conyuge}`;
+            marriageSection.appendChild(marriageLabel);
         }
-        if (!places.includes(state.detailSelectedLugar)) {
-            state.detailSelectedLugar = places[0] || '';
-        }
-        renderDetailsSelect(
-            els.detailsParticipants,
-            participants.map(participant => participant.name),
-            state.detailSelectedParticipant,
-            event => {
-                state.detailSelectedParticipant = event.target.value;
-                renderDetailsSidebar();
-            },
-            'Seleccionar participante'
-        );
+        container.appendChild(marriageSection);
 
-        els.detailsParticipantInfo.replaceChildren();
-        const participant = participants.find(item => item.name === state.detailSelectedParticipant);
-        if (participant) {
-            const marriageSection = createDetailsSection('Matrimonio');
-            const spouseSelect = document.createElement('select');
-            spouseSelect.setAttribute('aria-label', 'Cónyuge');
-            const noSpouseOption = document.createElement('option');
-            noSpouseOption.value = '';
-            noSpouseOption.textContent = 'Sin cónyuge';
-            spouseSelect.appendChild(noSpouseOption);
-            participants.filter(item => item.name !== participant.name).forEach(item => {
-                const option = document.createElement('option');
-                option.value = item.name;
-                option.textContent = item.name;
-                spouseSelect.appendChild(option);
-            });
-            spouseSelect.value = participant.conyuge;
-            spouseSelect.onchange = event => {
-                setSpouse(participant, event.target.value);
-                saveToStorage();
-                renderListas();
-            };
-            marriageSection.appendChild(spouseSelect);
-            if (participant.conyuge) {
-                const marriageLabel = document.createElement('small');
-                marriageLabel.textContent = `💍 Matrimonio con ${participant.conyuge}`;
-                marriageSection.appendChild(marriageLabel);
+        const monthlyLimitSection = createDetailsSection('Frecuencia mensual');
+        const monthlyLimitLabel = document.createElement('label');
+        monthlyLimitLabel.textContent = 'Máximo de salidas al mes';
+        monthlyLimitLabel.htmlFor = 'participantMonthlyLimit';
+        const monthlyLimitInput = document.createElement('input');
+        monthlyLimitInput.id = 'participantMonthlyLimit';
+        monthlyLimitInput.type = 'number';
+        monthlyLimitInput.min = '1';
+        monthlyLimitInput.step = '1';
+        monthlyLimitInput.placeholder = 'Sin límite';
+        monthlyLimitInput.value = participant.maxSalidasMes ?? '';
+        monthlyLimitInput.setAttribute('aria-label', 'Máximo de salidas al mes');
+        monthlyLimitInput.onchange = () => {
+            const value = monthlyLimitInput.value.trim();
+            const limit = value === '' ? null : Number(value);
+            if (limit !== null && (!Number.isSafeInteger(limit) || limit < 1)) {
+                monthlyLimitInput.setCustomValidity('Indica un número entero mayor que cero.');
+                monthlyLimitInput.reportValidity();
+                monthlyLimitInput.setCustomValidity('');
+                monthlyLimitInput.value = participant.maxSalidasMes ?? '';
+                return;
             }
-            els.detailsParticipantInfo.appendChild(marriageSection);
+            participant.maxSalidasMes = limit;
+            saveToStorage();
+            renderTabla();
+        };
+        const monthlyLimitHint = document.createElement('small');
+        monthlyLimitHint.textContent = 'Déjalo vacío si no tiene límite.';
+        monthlyLimitSection.append(monthlyLimitLabel, monthlyLimitInput, monthlyLimitHint);
+        container.appendChild(monthlyLimitSection);
 
-            const monthlyLimitSection = createDetailsSection('Frecuencia mensual');
-            const monthlyLimitLabel = document.createElement('label');
-            monthlyLimitLabel.textContent = 'Máximo de salidas al mes';
-            monthlyLimitLabel.htmlFor = 'participantMonthlyLimit';
-            const monthlyLimitInput = document.createElement('input');
-            monthlyLimitInput.id = 'participantMonthlyLimit';
-            monthlyLimitInput.type = 'number';
-            monthlyLimitInput.min = '1';
-            monthlyLimitInput.step = '1';
-            monthlyLimitInput.placeholder = 'Sin límite';
-            monthlyLimitInput.value = participant.maxSalidasMes ?? '';
-            monthlyLimitInput.setAttribute('aria-label', 'Máximo de salidas al mes');
-            monthlyLimitInput.onchange = () => {
-                const value = monthlyLimitInput.value.trim();
-                const limit = value === '' ? null : Number(value);
-                if (limit !== null && (!Number.isSafeInteger(limit) || limit < 1)) {
-                    monthlyLimitInput.setCustomValidity('Indica un número entero mayor que cero.');
-                    monthlyLimitInput.reportValidity();
-                    monthlyLimitInput.setCustomValidity('');
-                    monthlyLimitInput.value = participant.maxSalidasMes ?? '';
-                    return;
-                }
-                participant.maxSalidasMes = limit;
-                saveToStorage();
-                renderTabla();
-            };
-            const monthlyLimitHint = document.createElement('small');
-            monthlyLimitHint.textContent = 'Déjalo vacío si no tiene límite.';
-            monthlyLimitSection.append(monthlyLimitLabel, monthlyLimitInput, monthlyLimitHint);
-            els.detailsParticipantInfo.appendChild(monthlyLimitSection);
-
-            const scheduleSection = createDetailsSection('Horarios disponibles');
-            DIAS_SEMANA.forEach((dayName, day) => {
-                const daySection = document.createElement('div');
-                daySection.className = 'details-day';
-                const dayHeading = document.createElement('strong');
-                dayHeading.textContent = dayName;
-                daySection.appendChild(dayHeading);
-
-                const hours = state.configDias[day] || [];
-                if (!hours.length) {
-                    const empty = document.createElement('small');
-                    empty.textContent = 'Sin horarios configurados';
-                    daySection.appendChild(empty);
-                }
-
-                hours.forEach(hour => {
-                    daySection.appendChild(createDetailsCheckbox(hour, getParticipantAvailableForHour(participant, day, hour), event => {
-                        if (!participant.horariosDisponibles) {
-                            participant.horariosDisponibles = {};
-                            for (let idx = 0; idx < 7; idx++) {
-                                participant.horariosDisponibles[idx] = (state.configDias[idx] || []).filter(configuredHour => {
-                                    const availability = participant.disponibilidad[idx];
-                                    if (!availability) return false;
-                                    return getTurnoPorHora(configuredHour) === 'm' ? availability.m : availability.t;
-                                });
-                            }
-                        }
-
-                        const selectedHours = new Set(participant.horariosDisponibles[day] || []);
-                        if (event.target.checked) selectedHours.add(hour);
-                        else selectedHours.delete(hour);
-                        participant.horariosDisponibles[day] = [...selectedHours];
-
-                        const availability = participant.disponibilidad[day];
-                        const morningHours = (state.configDias[day] || []).filter(configuredHour => getTurnoPorHora(configuredHour) === 'm');
-                        const afternoonHours = (state.configDias[day] || []).filter(configuredHour => getTurnoPorHora(configuredHour) === 't');
-                        availability.m = morningHours.some(configuredHour => selectedHours.has(configuredHour));
-                        availability.t = afternoonHours.some(configuredHour => selectedHours.has(configuredHour));
-                        if (!availability.m) availability.pM = false;
-                        if (!availability.t) availability.pT = false;
-
-                        saveToStorage();
-                        renderTabla();
-                    }));
-                });
-                scheduleSection.appendChild(daySection);
-            });
-            els.detailsParticipantInfo.appendChild(scheduleSection);
-
-            const specialAvailabilitySection = createDetailsSection('Disponibilidad especial');
-            specialAvailabilitySection.appendChild(createDetailsCheckbox(
-                'Disponible siempre (Cartas / Especial)',
-                participant.cartas,
-                event => {
-                    participant.cartas = event.target.checked;
-                    saveToStorage();
-                    renderTabla();
-                }
-            ));
-            els.detailsParticipantInfo.appendChild(specialAvailabilitySection);
-
-            const preferredPlacesSection = createDetailsSection('Lugares preferidos');
-            if (places.length) {
-                places.forEach(place => {
-                    preferredPlacesSection.appendChild(createDetailsCheckbox(
-                        place,
-                        participant.preferenciasLugares.includes(place),
-                        event => {
-                            const preferences = new Set(participant.preferenciasLugares);
-                            if (event.target.checked) preferences.add(place);
-                            else preferences.delete(place);
-                            participant.preferenciasLugares = [...preferences];
-                            saveToStorage();
-                        }
-                    ));
-                });
-            } else {
-                const empty = document.createElement('small');
-                empty.textContent = 'Añade lugares para elegir preferencias.';
-                preferredPlacesSection.appendChild(empty);
-            }
-            els.detailsParticipantInfo.appendChild(preferredPlacesSection);
-
-            const preferredCompanionsSection = createDetailsSection('Compañeros preferidos');
-            const companions = participants.filter(item => item.name !== participant.name);
-            if (companions.length) {
-                companions.forEach(companion => {
-                    preferredCompanionsSection.appendChild(createDetailsCheckbox(
-                        companion.name,
-                        participant.preferenciasCompaneros.includes(companion.name),
-                        event => {
-                            const preferences = new Set(participant.preferenciasCompaneros);
-                            if (event.target.checked) preferences.add(companion.name);
-                            else preferences.delete(companion.name);
-                            participant.preferenciasCompaneros = [...preferences];
-                            saveToStorage();
-                        }
-                    ));
-                });
-            } else {
-                const empty = document.createElement('small');
-                empty.textContent = 'Añade más participantes para elegir compañeros.';
-                preferredCompanionsSection.appendChild(empty);
-            }
-            els.detailsParticipantInfo.appendChild(preferredCompanionsSection);
-        } else {
-            const empty = document.createElement('small');
-            empty.textContent = 'Añade participantes para editar sus preferencias.';
-            els.detailsParticipantInfo.appendChild(empty);
-        }
-
-        renderDetailsSelect(
-            els.detailsPlaces,
-            places,
-            state.detailSelectedLugar,
-            event => {
-                state.detailSelectedLugar = event.target.value;
-                renderDetailsSidebar();
-            },
-            'Seleccionar lugar'
-        );
-
-        els.detailsPlaceInfo.replaceChildren();
-        const selectedPlace = state.detailSelectedLugar;
-        if (!selectedPlace) {
-            const empty = document.createElement('small');
-            empty.textContent = 'Añade lugares para configurar su disponibilidad.';
-            els.detailsPlaceInfo.appendChild(empty);
-            return;
-        }
-
-        const locationHoursSection = createDetailsSection('Días y horarios disponibles');
+        const scheduleSection = createDetailsSection('Horarios disponibles');
         DIAS_SEMANA.forEach((dayName, day) => {
             const daySection = document.createElement('div');
             daySection.className = 'details-day';
@@ -811,7 +662,268 @@
             dayHeading.textContent = dayName;
             daySection.appendChild(dayHeading);
 
-            const hours = state.configDias[day] || [];
+            const allHours = state.configDias[day] || [];
+            const hours = [...new Set(allHours)];
+            if (!hours.length) {
+                const empty = document.createElement('small');
+                empty.textContent = 'Sin horarios configurados';
+                daySection.appendChild(empty);
+            }
+
+            hours.forEach(hour => {
+                daySection.appendChild(createDetailsCheckbox(hour, getParticipantAvailableForHour(participant, day, hour), event => {
+                    if (!participant.horariosDisponibles) {
+                        participant.horariosDisponibles = {};
+                        for (let idx = 0; idx < 7; idx++) {
+                            participant.horariosDisponibles[idx] = (state.configDias[idx] || []).filter(configuredHour => {
+                                const availability = participant.disponibilidad[idx];
+                                if (!availability) return false;
+                                return getTurnoPorHora(configuredHour) === 'm' ? availability.m : availability.t;
+                            });
+                        }
+                    }
+
+                    const selectedHours = new Set(participant.horariosDisponibles[day] || []);
+                    if (event.target.checked) selectedHours.add(hour);
+                    else selectedHours.delete(hour);
+                    participant.horariosDisponibles[day] = [...selectedHours];
+
+                    const availability = participant.disponibilidad[day];
+                    const morningHours = (state.configDias[day] || []).filter(configuredHour => getTurnoPorHora(configuredHour) === 'm');
+                    const afternoonHours = (state.configDias[day] || []).filter(configuredHour => getTurnoPorHora(configuredHour) === 't');
+                    availability.m = morningHours.some(configuredHour => selectedHours.has(configuredHour));
+                    availability.t = afternoonHours.some(configuredHour => selectedHours.has(configuredHour));
+                    if (!availability.m) availability.pM = false;
+                    if (!availability.t) availability.pT = false;
+
+                    saveToStorage();
+                    renderTabla();
+                }));
+            });
+            scheduleSection.appendChild(daySection);
+        });
+        container.appendChild(scheduleSection);
+
+        const specialAvailabilitySection = createDetailsSection('Disponibilidad especial');
+        specialAvailabilitySection.appendChild(createDetailsCheckbox(
+            'Disponible siempre (Cartas / Especial)',
+            participant.cartas,
+            event => {
+                participant.cartas = event.target.checked;
+                saveToStorage();
+                renderTabla();
+            }
+        ));
+        container.appendChild(specialAvailabilitySection);
+
+        const preferredPlacesSection = createDetailsSection('Lugares preferidos');
+        if (places.length) {
+            places.forEach(place => {
+                preferredPlacesSection.appendChild(createDetailsCheckbox(
+                    place,
+                    participant.preferenciasLugares.includes(place),
+                    event => {
+                        const preferences = new Set(participant.preferenciasLugares);
+                        if (event.target.checked) preferences.add(place);
+                        else preferences.delete(place);
+                        participant.preferenciasLugares = [...preferences];
+                        saveToStorage();
+                    }
+                ));
+            });
+        } else {
+            const empty = document.createElement('small');
+            empty.textContent = 'Añade lugares para elegir preferencias.';
+            preferredPlacesSection.appendChild(empty);
+        }
+        container.appendChild(preferredPlacesSection);
+
+        const preferredCompanionsSection = createDetailsSection('Compañeros preferidos');
+        const companions = participants.filter(item => item.name !== participant.name);
+        if (companions.length) {
+            companions.forEach(companion => {
+                preferredCompanionsSection.appendChild(createDetailsCheckbox(
+                    companion.name,
+                    participant.preferenciasCompaneros.includes(companion.name),
+                    event => {
+                        const preferences = new Set(participant.preferenciasCompaneros);
+                        if (event.target.checked) preferences.add(companion.name);
+                        else preferences.delete(companion.name);
+                        participant.preferenciasCompaneros = [...preferences];
+                        saveToStorage();
+                    }
+                ));
+            });
+        } else {
+            const empty = document.createElement('small');
+            empty.textContent = 'Añade más participantes para elegir compañeros.';
+            preferredCompanionsSection.appendChild(empty);
+        }
+        container.appendChild(preferredCompanionsSection);
+    }
+
+    // --- TARJETA (MODAL) DE EDICIÓN DE UN PARTICIPANTE ---
+    let participantModal = null;
+    let modalKind = 'participant';
+    let participantModalReturnFocus = null;
+
+    function buildParticipantModal() {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'participant-modal-backdrop';
+        backdrop.hidden = true;
+
+        const card = document.createElement('div');
+        card.className = 'participant-card';
+        card.setAttribute('role', 'dialog');
+        card.setAttribute('aria-modal', 'true');
+        card.setAttribute('aria-labelledby', 'participantCardTitle');
+        card.tabIndex = -1;
+
+        const header = document.createElement('div');
+        header.className = 'participant-card-head';
+        const title = document.createElement('h3');
+        title.id = 'participantCardTitle';
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'participant-card-close';
+        closeBtn.textContent = '✕';
+        closeBtn.setAttribute('aria-label', 'Cerrar');
+        header.append(title, closeBtn);
+
+        const bodyEl = document.createElement('div');
+        bodyEl.className = 'participant-card-body details-sidebar-content';
+
+        const footer = document.createElement('div');
+        footer.className = 'participant-card-foot';
+        const doneBtn = document.createElement('button');
+        doneBtn.type = 'button';
+        doneBtn.className = 'participant-card-done';
+        doneBtn.textContent = 'Listo';
+        footer.appendChild(doneBtn);
+
+        card.append(header, bodyEl, footer);
+        backdrop.appendChild(card);
+        document.body.appendChild(backdrop);
+
+        closeBtn.addEventListener('click', closeParticipantModal);
+        doneBtn.addEventListener('click', closeParticipantModal);
+        backdrop.addEventListener('mousedown', event => {
+            if (event.target === backdrop) closeParticipantModal();
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && !backdrop.hidden) closeParticipantModal();
+        });
+
+        return { backdrop, card, title, body: bodyEl };
+    }
+
+    function renderCardModal() {
+        if (!participantModal || participantModal.backdrop.hidden) return;
+        const participants = state.participantes.filter(p => p && p.name)
+            .sort((a, b) => a.name.localeCompare(b.name));
+        const places = (state.lugares || []).filter(Boolean).slice().sort((a, b) => a.localeCompare(b));
+        const scrollTop = participantModal.body.scrollTop;
+
+        if (modalKind === 'place') {
+            if (!places.includes(state.detailSelectedLugar)) {
+                closeParticipantModal();
+                return;
+            }
+            participantModal.title.textContent = `📍 ${state.detailSelectedLugar}`;
+            renderPlaceDetails(participantModal.body, state.detailSelectedLugar, participants);
+        } else {
+            const participant = participants.find(p => p.name === state.detailSelectedParticipant);
+            if (!participant) {
+                closeParticipantModal();
+                return;
+            }
+            participantModal.title.textContent = participant.conyuge ? `💍 ${participant.name}` : participant.name;
+            renderParticipantDetails(participantModal.body, participant, participants, places);
+        }
+        participantModal.body.scrollTop = scrollTop;
+    }
+
+    function showCardModal(kind) {
+        if (!participantModal) participantModal = buildParticipantModal();
+        modalKind = kind;
+        participantModalReturnFocus = document.activeElement;
+        participantModal.backdrop.hidden = false;
+        document.body.classList.add('modal-open');
+        renderCardModal();
+        participantModal.body.scrollTop = 0;
+        participantModal.card.focus();
+    }
+
+    function openParticipantModal(name) {
+        state.detailSelectedParticipant = name;
+        showCardModal('participant');
+    }
+
+    function openPlaceModal(name) {
+        state.detailSelectedLugar = name;
+        showCardModal('place');
+    }
+
+    function closeParticipantModal() {
+        if (!participantModal || participantModal.backdrop.hidden) return;
+        participantModal.backdrop.hidden = true;
+        document.body.classList.remove('modal-open');
+        if (participantModalReturnFocus && document.contains(participantModalReturnFocus)) {
+            participantModalReturnFocus.focus();
+        }
+        participantModalReturnFocus = null;
+    }
+
+    function renderPlaceDetails(container, selectedPlace, participants) {
+        container.replaceChildren();
+        const locationHoursSection = createDetailsSection('Días y horarios disponibles');
+        const setPlaceHours = (dayList, enabled) => {
+            if (!state.disponibilidadLugares[selectedPlace]) state.disponibilidadLugares[selectedPlace] = {};
+            dayList.forEach(day => {
+                state.disponibilidadLugares[selectedPlace][day] = enabled
+                    ? [...new Set(state.configDias[day] || [])]
+                    : [];
+            });
+            saveToStorage();
+            renderTabla();
+            renderCardModal();
+        };
+        const allDays = DIAS_SEMANA.map((_, day) => day);
+        const daysWithHours = allDays.filter(day => (state.configDias[day] || []).length > 0);
+        const placeGoesOutEverywhere = daysWithHours.length > 0 && daysWithHours.every(day =>
+            [...new Set(state.configDias[day])].every(hour => isLugarAvailable(selectedPlace, day, hour))
+        );
+        const goesOutHelp = document.createElement('small');
+        goesOutHelp.textContent = daysWithHours.length
+            ? 'Un lugar solo sale en los horarios marcados. Actívalo para que salga en todos.'
+            : 'Primero configura horarios en «Horarios globales».';
+        locationHoursSection.append(
+            createDetailsCheckbox('Este lugar sale en todos los horarios', placeGoesOutEverywhere, event => {
+                setPlaceHours(daysWithHours, event.target.checked);
+            }),
+            goesOutHelp
+        );
+
+        DIAS_SEMANA.forEach((dayName, day) => {
+            const daySection = document.createElement('div');
+            daySection.className = 'details-day';
+            const dayHeader = document.createElement('div');
+            dayHeader.className = 'details-day-head';
+            const dayHeading = document.createElement('strong');
+            dayHeading.textContent = dayName;
+            dayHeader.appendChild(dayHeading);
+
+            const hours = [...new Set(state.configDias[day] || [])];
+            if (hours.length) {
+                const dayAll = hours.every(hour => isLugarAvailable(selectedPlace, day, hour));
+                const dayToggle = document.createElement('button');
+                dayToggle.type = 'button';
+                dayToggle.className = 'details-day-toggle';
+                dayToggle.textContent = dayAll ? 'Quitar todos' : 'Marcar todos';
+                dayToggle.onclick = () => setPlaceHours([day], !dayAll);
+                dayHeader.appendChild(dayToggle);
+            }
+            daySection.appendChild(dayHeader);
             if (!hours.length) {
                 const empty = document.createElement('small');
                 empty.textContent = 'Sin horarios configurados';
@@ -838,7 +950,7 @@
             });
             locationHoursSection.appendChild(daySection);
         });
-        els.detailsPlaceInfo.appendChild(locationHoursSection);
+        container.appendChild(locationHoursSection);
 
         const allowedParticipantsSection = createDetailsSection('Participantes autorizados');
         const authorizedNames = Array.isArray(state.participantesPorLugar[selectedPlace])
@@ -879,7 +991,7 @@
                         state.participantesPorLugar[selectedPlace] = [...allowedNames];
                         saveToStorage();
                         renderTabla();
-                        renderDetailsSidebar();
+                        renderCardModal();
                     }
                 ));
             });
@@ -888,7 +1000,11 @@
             empty.textContent = 'Añade participantes para configurar quiénes pueden salir a este lugar.';
             allowedParticipantsSection.appendChild(empty);
         }
-        els.detailsPlaceInfo.appendChild(allowedParticipantsSection);
+        container.appendChild(allowedParticipantsSection);
+    }
+
+    function renderDetailsSidebar() {
+        renderCardModal();
     }
 
     function renderHorariosGlobales() {
@@ -987,15 +1103,16 @@
                     newHourInput.focus();
                     return;
                 }
-                if (!state.configDias[dayIndex].includes(newHour)) {
-                    state.configDias[dayIndex].push(newHour);
-                    saveToStorage();
-                    renderHorariosGlobales();
-                    renderTabla();
-                    renderDetailsSidebar();
-                }
+                state.configDias[dayIndex].push(newHour);
+                saveToStorage();
+                renderHorariosGlobales();
+                renderTabla();
+                renderDetailsSidebar();
             };
 
+            newHourInput.addEventListener('keydown', event => {
+                if (event.key === 'Enter') { event.preventDefault(); addButton.click(); }
+            });
             addRow.append(newHourInput, addButton);
             daySection.appendChild(addRow);
             container.appendChild(daySection);
@@ -1723,9 +1840,6 @@
     // --- CONFIGURACIÓN INICIAL ---
     function init() {
         loadFromStorage();
-        els.detailsParticipantsTab.addEventListener('click', () => setDetailsSection('participants'));
-        els.detailsPlacesTab.addEventListener('click', () => setDetailsSection('places'));
-        setDetailsSection(state.detailActiveSection);
 
         const colorScheme = window.matchMedia('(prefers-color-scheme: dark)');
         const applySystemTheme = event => {
