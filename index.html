@@ -6,6 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>📋 Programa de Predicación Pública</title>
 
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#F9F4EA" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1B1A14" media="(prefers-color-scheme: dark)">
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
 
@@ -178,6 +184,13 @@
         </aside>
     </div>
     <script src="js/script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => console.error('Service worker:', err));
+            });
+        }
+    </script>
 
 </body>
 
